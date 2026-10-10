@@ -408,3 +408,9 @@ Use syntax checks, actual installation and the idempotence test.
 See the [upstream inspection and pins](docs/upstream.md) and
 [actual validation status](docs/validation.md). That record distinguishes native
 host results, local MCP calls and authenticated OpenAI/ChatGPT tests.
+
+## License
+
+This repository's Ansible automation, helpers, tests and documentation are
+licensed under the [MIT License](LICENSE). Installed upstream components and
+their dependencies retain their own licenses and copyright notices.
