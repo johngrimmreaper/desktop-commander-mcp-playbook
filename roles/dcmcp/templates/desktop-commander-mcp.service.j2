@@ -1,0 +1,39 @@
+[Unit]
+Description=Desktop Commander MCP via official OpenAI Secure MCP Tunnel
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User={{ dcmcp_user }}
+Group={{ dcmcp_gid }}
+WorkingDirectory={{ dcmcp_workdir }}
+Environment=HOME={{ dcmcp_home }}
+Environment=USER={{ dcmcp_user }}
+Environment=LOGNAME={{ dcmcp_user }}
+Environment=SHELL=/bin/bash
+Environment=PATH={{ dcmcp_prefix }}/current/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+UMask=0077
+RuntimeDirectory=desktop-commander-mcp
+RuntimeDirectoryMode=0700
+ExecStart={{ dcmcp_helpers }}/run
+Restart=always
+RestartSec=10
+RestartPreventExitStatus=78
+KillMode=control-group
+KillSignal=SIGTERM
+SendSIGKILL=yes
+TimeoutStopSec=45
+TimeoutStartSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=desktop-commander-mcp
+# Native host daemon; no Docker/Podman dependency or container namespace.
+# The existing mcp_operator sudo capabilities are preserved.
+# No NoNewPrivileges/ProtectSystem/sudoers changes are introduced.
+
+[Install]
+WantedBy=multi-user.target

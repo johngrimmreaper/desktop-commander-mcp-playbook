@@ -1,0 +1,11 @@
+---
+- name: Install Desktop Commander MCP tunnel
+  hosts: mcp_servers
+  become: true
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Run the install operation
+      ansible.builtin.include_role:
+        name: dcmcp
+        tasks_from: main

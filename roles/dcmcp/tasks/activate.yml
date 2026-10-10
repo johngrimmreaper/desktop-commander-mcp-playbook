@@ -1,0 +1,181 @@
+---
+- name: Validate the operator's active files before stopping any running service
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Inspect the current release selector
+  ansible.builtin.stat:
+    path: "{{ dcmcp_prefix }}/current"
+    follow: false
+  register: dcmcp_current
+
+- name: Reject unexpected current-selector objects
+  ansible.builtin.assert:
+    that:
+      - dcmcp_current.stat.islnk | default(false)
+      - dcmcp_current.stat.uid == 0
+      - dcmcp_current.stat.lnk_source is match('^/opt/desktop-commander-mcp/releases/[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')
+    fail_msg: The current selector is not a managed root-owned release link.
+  when: dcmcp_current.stat.exists | default(false) or dcmcp_current.stat.islnk | default(false)
+
+- name: Gather the previous service state
+  ansible.builtin.service_facts:
+
+- name: Remember the previous selection and enablement
+  ansible.builtin.set_fact:
+    dcmcp_previous_release: "{{ dcmcp_current.stat.lnk_source | default('') | basename }}"
+    dcmcp_previous_enabled: >-
+      {{ ansible_facts['services'].get(dcmcp_service, {}).get('status', '') == 'enabled' }}
+    dcmcp_previous_running: >-
+      {{ ansible_facts['services'].get(dcmcp_service, {}).get('state', '') == 'running' }}
+
+- name: Compute the private activation fingerprint after successful offline validation
+  become: true
+  become_user: "{{ dcmcp_user }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ dcmcp_helpers }}/preflight.py"
+      - --user
+      - "{{ dcmcp_user }}"
+      - --workdir
+      - "{{ dcmcp_workdir }}"
+      - --release
+      - "{{ dcmcp_prefix }}/releases/{{ dcmcp_target_release }}"
+      - --fingerprint
+  environment:
+    HOME: "{{ dcmcp_home }}"
+  register: dcmcp_fingerprint
+  changed_when: false
+  no_log: true
+
+- name: Inspect the prior private activation stamp
+  ansible.builtin.stat:
+    path: /var/lib/desktop-commander-mcp/activation.sha256
+  register: dcmcp_stamp_stat
+
+- name: Read the prior private activation stamp
+  ansible.builtin.slurp:
+    src: /var/lib/desktop-commander-mcp/activation.sha256
+  register: dcmcp_stamp
+  when: dcmcp_stamp_stat.stat.exists
+  no_log: true
+
+- name: Determine whether activation inputs changed
+  ansible.builtin.set_fact:
+    dcmcp_needs_restart: >-
+      {{ dcmcp_restart | bool or not dcmcp_previous_running | bool or
+         dcmcp_previous_release != dcmcp_target_release or
+         not dcmcp_stamp_stat.stat.exists or
+         (dcmcp_stamp.content | default('') | b64decode | trim) != dcmcp_fingerprint.stdout }}
+  no_log: true
+
+- name: Read the validated tunnel settings for the local readiness endpoint
+  ansible.builtin.slurp:
+    src: "{{ dcmcp_tunnel_config }}"
+  register: dcmcp_validated_yaml
+  no_log: true
+
+- name: Derive the local readiness URL
+  ansible.builtin.set_fact:
+    dcmcp_ready_url: >-
+      {{ 'http://' + (dcmcp_validated_yaml.content | b64decode | from_yaml)['health']['listen_addr'] + '/readyz' }}
+  no_log: true
+
+- name: Switch or restart only after validation and complete cgroup shutdown
+  when: dcmcp_needs_restart | bool
+  block:
+    - name: Stop the current daemon and all its children before replacement
+      ansible.builtin.systemd_service:
+        name: "{{ dcmcp_service }}"
+        state: stopped
+
+    - name: Atomically select the validated release
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ dcmcp_helpers }}/select-release.py"
+          - "{{ dcmcp_target_release }}"
+      changed_when: true
+
+    - name: Reload the installed unit definition
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Clear any previous start-rate or configuration failure
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, reset-failed, "{{ dcmcp_service }}"]
+      changed_when: false
+
+    - name: Enable and start the explicitly activated daemon
+      ansible.builtin.systemd_service:
+        name: "{{ dcmcp_service }}"
+        enabled: true
+        state: started
+
+    - name: Require local tunnel readiness after activation
+      ansible.builtin.uri:
+        url: "{{ dcmcp_ready_url }}"
+        use_proxy: false
+        status_code: 200
+        timeout: 3
+      register: dcmcp_readiness
+      until: dcmcp_readiness.status | default(0) == 200
+      retries: 30
+      delay: 2
+      changed_when: false
+      no_log: true
+
+    - name: Record the successfully activated input fingerprint
+      ansible.builtin.copy:
+        content: "{{ dcmcp_fingerprint.stdout }}\n"
+        dest: /var/lib/desktop-commander-mcp/activation.sha256
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+  rescue:
+    - name: Stop the failed replacement and restore prior enablement
+      ansible.builtin.systemd_service:
+        name: "{{ dcmcp_service }}"
+        enabled: "{{ dcmcp_previous_enabled | bool }}"
+        state: stopped
+
+    - name: Restore the previous release selector if one existed
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ dcmcp_helpers }}/select-release.py"
+          - "{{ dcmcp_previous_release }}"
+      when: dcmcp_previous_release | length > 0
+      changed_when: true
+
+    - name: Remove the selector after a failed first activation
+      ansible.builtin.file:
+        path: "{{ dcmcp_prefix }}/current"
+        state: absent
+      when: dcmcp_previous_release | length == 0
+
+    - name: Report failed activation without claiming rollback health
+      ansible.builtin.fail:
+        msg: >-
+          Activation failed. The previous selection and enablement were restored;
+          the service is stopped. Inspect the journal and local readiness,
+          fix the issue, then run preflight and activate again.
+
+- name: Preserve or restore enablement without restarting unchanged inputs
+  ansible.builtin.systemd_service:
+    name: "{{ dcmcp_service }}"
+    enabled: true
+    state: started
+  when: not dcmcp_needs_restart | bool
+
+- name: Verify local readiness for an unchanged running release
+  ansible.builtin.uri:
+    url: "{{ dcmcp_ready_url }}"
+    use_proxy: false
+    status_code: 200
+    timeout: 3
+  changed_when: false
+  when: not dcmcp_needs_restart | bool
+  no_log: true

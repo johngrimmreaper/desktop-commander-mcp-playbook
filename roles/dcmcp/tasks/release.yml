@@ -1,0 +1,285 @@
+---
+- name: Define the desired release manifest
+  ansible.builtin.set_fact:
+    dcmcp_manifest:
+      schema: 1
+      desktop_version: "{{ dcmcp_desktop_version }}"
+      desktop_revision: "{{ dcmcp_desktop_revision }}"
+      lock_blob: "{{ dcmcp_lock_blob }}"
+      node_version: "{{ dcmcp_node_version }}"
+      node_sha256: "{{ dcmcp_node_checksums[ansible_facts['architecture']] }}"
+      tunnel_version: "{{ dcmcp_tunnel_version }}"
+      tunnel_sha256: "{{ dcmcp_tunnel_checksums[ansible_facts['architecture']] }}"
+      architecture: "{{ ansible_facts['architecture'] }}"
+    dcmcp_release_path: "{{ dcmcp_prefix }}/releases/{{ dcmcp_release_id }}"
+    dcmcp_stage_path: "{{ dcmcp_prefix }}/releases/.{{ dcmcp_release_id }}.staging"
+
+- name: Inspect the desired release directory
+  ansible.builtin.stat:
+    path: "{{ dcmcp_release_path }}"
+    follow: false
+  register: dcmcp_release_stat
+
+- name: Inspect an existing manifest
+  ansible.builtin.stat:
+    path: "{{ dcmcp_release_path }}/release.json"
+    follow: false
+  register: dcmcp_manifest_stat
+  when: dcmcp_release_stat.stat.exists
+
+- name: Reject incomplete releases and release-directory links
+  ansible.builtin.assert:
+    that:
+      - dcmcp_release_stat.stat.isdir | default(false)
+      - not dcmcp_release_stat.stat.islnk | default(false)
+      - dcmcp_release_stat.stat.uid == 0
+      - dcmcp_manifest_stat.stat.isreg | default(false)
+      - not dcmcp_manifest_stat.stat.islnk | default(false)
+    fail_msg: An incomplete or unexpected release exists; do not overwrite it.
+  when: dcmcp_release_stat.stat.exists
+
+- name: Read the existing non-secret manifest
+  ansible.builtin.slurp:
+    src: "{{ dcmcp_release_path }}/release.json"
+  register: dcmcp_saved_manifest
+  when: dcmcp_release_stat.stat.exists
+
+- name: Prevent reusing a release name with different pins
+  ansible.builtin.assert:
+    that:
+      - dcmcp_saved_manifest.content | b64decode | from_json == dcmcp_manifest
+    fail_msg: Release pins changed under an existing ID; use a new version/revision instead.
+  when: dcmcp_release_stat.stat.exists
+
+- name: Build a new immutable release without affecting the active runtime
+  when: not dcmcp_release_stat.stat.exists
+  block:
+    - name: Remove an incomplete staging directory from a previous failed build
+      ansible.builtin.file:
+        path: "{{ dcmcp_stage_path }}"
+        state: absent
+
+    - name: Create a private staging directory for the existing user
+      ansible.builtin.file:
+        path: "{{ dcmcp_stage_path }}"
+        state: directory
+        owner: "{{ dcmcp_user }}"
+        group: "{{ dcmcp_gid }}"
+        mode: "0700"
+
+    - name: Download the official versioned Node archive with its pinned SHA-256
+      ansible.builtin.get_url:
+        url: >-
+          https://nodejs.org/dist/v{{ dcmcp_node_version }}/node-v{{ dcmcp_node_version }}-linux-{{ dcmcp_node_arches[ansible_facts['architecture']] }}.tar.xz
+        dest: "/var/cache/desktop-commander-mcp/node-{{ dcmcp_node_version }}-{{ ansible_facts['architecture'] }}.tar.xz"
+        checksum: "sha256:{{ dcmcp_node_checksums[ansible_facts['architecture']] }}"
+        owner: root
+        group: root
+        mode: "0644"
+        validate_certs: true
+
+    - name: Create the version-scoped Node directory
+      ansible.builtin.file:
+        path: "{{ dcmcp_stage_path }}/node"
+        state: directory
+        owner: "{{ dcmcp_user }}"
+        group: "{{ dcmcp_gid }}"
+        mode: "0755"
+
+    - name: Extract the verified Node archive
+      ansible.builtin.unarchive:
+        src: "/var/cache/desktop-commander-mcp/node-{{ dcmcp_node_version }}-{{ ansible_facts['architecture'] }}.tar.xz"
+        dest: "{{ dcmcp_stage_path }}/node"
+        remote_src: true
+        extra_opts: [--strip-components=1]
+        owner: "{{ dcmcp_user }}"
+        group: "{{ dcmcp_gid }}"
+
+    - name: Fetch Desktop Commander at the immutable release commit
+      become: true
+      become_user: "{{ dcmcp_user }}"
+      ansible.builtin.git:
+        repo: https://github.com/wonderwhy-er/DesktopCommanderMCP.git
+        dest: "{{ dcmcp_stage_path }}/mcp"
+        version: "{{ dcmcp_desktop_revision }}"
+        update: false
+        force: false
+      environment:
+        GIT_TERMINAL_PROMPT: "0"
+
+    - name: Verify source HEAD and lockfile Git object integrity
+      become: true
+      become_user: "{{ dcmcp_user }}"
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - |
+            import json, pathlib, re, subprocess, sys
+            root = pathlib.Path(sys.argv[1])
+            def git(*args):
+                return subprocess.check_output(["/usr/bin/git", "-C", str(root), *args],
+                                               text=True).strip()
+            if git("rev-parse", "HEAD") != sys.argv[2]:
+                raise SystemExit("Desktop Commander source revision mismatch")
+            if git("rev-parse", "HEAD:package-lock.json") != sys.argv[3]:
+                raise SystemExit("Desktop Commander lockfile object mismatch")
+            if git("hash-object", "package-lock.json") != sys.argv[3]:
+                raise SystemExit("Desktop Commander working lockfile object mismatch")
+            if subprocess.run(["/usr/bin/git", "-C", str(root), "diff", "--quiet",
+                               "HEAD", "--"], check=False).returncode:
+                raise SystemExit("Pinned source contains modified tracked files")
+            pkg = json.loads((root / "package.json").read_text())
+            lock = json.loads((root / "package-lock.json").read_text())
+            if pkg["version"] != sys.argv[4] or lock["lockfileVersion"] != 3:
+                raise SystemExit("Desktop Commander package/lock format mismatch")
+            for key in ("dependencies", "devDependencies", "optionalDependencies"):
+                if pkg.get(key, {}) != lock["packages"][""].get(key, {}):
+                    raise SystemExit("Desktop Commander package and lock dependencies differ")
+            for name, data in lock["packages"].items():
+                if not name:
+                    continue
+                if not re.fullmatch(r"sha(256|384|512)-[A-Za-z0-9+/=]+",
+                                    data.get("integrity", "")):
+                    raise SystemExit("Dependency without supported integrity hash")
+                if not data.get("resolved", "").startswith("https://registry.npmjs.org/"):
+                    raise SystemExit("Dependency outside the pinned npm registry")
+          - "{{ dcmcp_stage_path }}/mcp"
+          - "{{ dcmcp_desktop_revision }}"
+          - "{{ dcmcp_lock_blob }}"
+          - "{{ dcmcp_desktop_version }}"
+      changed_when: false
+
+    - name: Install only locked dependencies with lifecycle scripts disabled
+      become: true
+      become_user: "{{ dcmcp_user }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ dcmcp_stage_path }}/node/bin/npm"
+          - ci
+          - --include=dev
+          - --include=optional
+          - --ignore-scripts
+          - --no-audit
+          - --no-fund
+        chdir: "{{ dcmcp_stage_path }}/mcp"
+      environment:
+        HOME: "{{ dcmcp_home }}"
+        PATH: "{{ dcmcp_stage_path }}/node/bin:/usr/bin:/bin"
+        npm_config_engine_strict: "true"
+        npm_config_cache: "{{ dcmcp_home }}/.cache/desktop-commander-mcp-npm"
+        PUPPETEER_SKIP_DOWNLOAD: "true"
+      changed_when: true
+
+    - name: Require the integrity-verified esbuild platform binary
+      become: true
+      become_user: "{{ dcmcp_user }}"
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/test
+          - -x
+          - "{{ dcmcp_stage_path }}/mcp/node_modules/@esbuild/linux-{{ dcmcp_node_arches[ansible_facts['architecture']] }}/bin/esbuild"
+      changed_when: false
+
+    - name: Build Desktop Commander and its UI from the pinned source
+      become: true
+      become_user: "{{ dcmcp_user }}"
+      ansible.builtin.command:
+        argv: ["{{ dcmcp_stage_path }}/node/bin/npm", run, build]
+        chdir: "{{ dcmcp_stage_path }}/mcp"
+      environment:
+        HOME: "{{ dcmcp_home }}"
+        PATH: "{{ dcmcp_stage_path }}/node/bin:/usr/bin:/bin"
+        ESBUILD_BINARY_PATH: "{{ dcmcp_stage_path }}/mcp/node_modules/@esbuild/linux-{{ dcmcp_node_arches[ansible_facts['architecture']] }}/bin/esbuild"
+      changed_when: true
+
+    - name: Smoke-check the built entrypoint syntax
+      become: true
+      become_user: "{{ dcmcp_user }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ dcmcp_stage_path }}/node/bin/node"
+          - --check
+          - "{{ dcmcp_stage_path }}/mcp/dist/index.js"
+      changed_when: false
+
+    - name: Smoke-check locked native and MCP dependencies without starting the MCP
+      become: true
+      become_user: "{{ dcmcp_user }}"
+      ansible.builtin.command:
+        argv:
+          - "{{ dcmcp_stage_path }}/node/bin/node"
+          - --input-type=module
+          - -e
+          - >-
+            await import('sharp');
+            await import('esbuild');
+            await import('@modelcontextprotocol/sdk/server/index.js');
+            const rg = await import('./dist/utils/ripgrep-resolver.js');
+            await rg.getRipgrepPath();
+        chdir: "{{ dcmcp_stage_path }}/mcp"
+      environment:
+        PATH: "{{ dcmcp_stage_path }}/node/bin:/usr/bin:/bin"
+      changed_when: false
+
+    - name: Download the official tunnel client with its pinned release asset digest
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/openai/tunnel-client/releases/download/v{{ dcmcp_tunnel_version }}/tunnel-client-v{{ dcmcp_tunnel_version }}-linux-{{ dcmcp_tunnel_arches[ansible_facts['architecture']] }}.zip
+        dest: "/var/cache/desktop-commander-mcp/tunnel-{{ dcmcp_tunnel_version }}-{{ ansible_facts['architecture'] }}.zip"
+        checksum: "sha256:{{ dcmcp_tunnel_checksums[ansible_facts['architecture']] }}"
+        owner: root
+        group: root
+        mode: "0644"
+        validate_certs: true
+
+    - name: Create the tunnel release directory
+      ansible.builtin.file:
+        path: "{{ dcmcp_stage_path }}/tunnel"
+        state: directory
+        mode: "0755"
+
+    - name: Extract the verified tunnel client bundle
+      ansible.builtin.unarchive:
+        src: "/var/cache/desktop-commander-mcp/tunnel-{{ dcmcp_tunnel_version }}-{{ ansible_facts['architecture'] }}.zip"
+        dest: "{{ dcmcp_stage_path }}/tunnel"
+        remote_src: true
+
+    - name: Ensure the released client is executable
+      ansible.builtin.file:
+        path: "{{ dcmcp_stage_path }}/tunnel/tunnel-client"
+        state: file
+        mode: "0755"
+
+    - name: Check the tunnel client version without starting a daemon
+      ansible.builtin.command:
+        argv: ["{{ dcmcp_stage_path }}/tunnel/tunnel-client", --version]
+      register: dcmcp_tunnel_version_check
+      changed_when: false
+      failed_when: >-
+        dcmcp_tunnel_version_check.rc != 0 or
+        not (dcmcp_tunnel_version_check.stdout is search('(^|[^0-9])v?' +
+        (dcmcp_tunnel_version | regex_escape) + '([^0-9]|$)'))
+
+    - name: Write the completion manifest only after successful build checks
+      ansible.builtin.copy:
+        content: "{{ dcmcp_manifest | to_nice_json }}\n"
+        dest: "{{ dcmcp_stage_path }}/release.json"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Freeze the complete installation with root ownership
+      ansible.builtin.file:
+        path: "{{ dcmcp_stage_path }}"
+        owner: root
+        group: root
+        mode: "u=rwX,go=rX"
+        recurse: true
+        follow: false
+
+    - name: Publish the complete release directory with one rename
+      ansible.builtin.command:
+        argv: [/usr/bin/mv, -T, "--", "{{ dcmcp_stage_path }}", "{{ dcmcp_release_path }}"]
+        creates: "{{ dcmcp_release_path }}/release.json"
+      changed_when: true

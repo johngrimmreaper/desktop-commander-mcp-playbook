@@ -1,0 +1,20 @@
+---
+- name: Load runtime context
+  ansible.builtin.import_tasks: context.yml
+
+- name: Validate the candidate without changing the current release or contacting OpenAI
+  become: true
+  become_user: "{{ dcmcp_user }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ dcmcp_helpers }}/preflight.py"
+      - --user
+      - "{{ dcmcp_user }}"
+      - --workdir
+      - "{{ dcmcp_workdir }}"
+      - --release
+      - "{{ dcmcp_prefix }}/releases/{{ dcmcp_target_release }}"
+  environment:
+    HOME: "{{ dcmcp_home }}"
+  changed_when: false

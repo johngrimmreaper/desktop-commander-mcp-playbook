@@ -1,0 +1,13 @@
+---
+# Run Ansible directly on the Ubuntu 26.04 development/server VM.
+# Copy manually to inventory/hosts.yml; no SSH or Docker is used.
+all:
+  children:
+    mcp_servers:
+      hosts:
+        localhost:
+          ansible_connection: local
+          ansible_python_interpreter: /usr/bin/python3
+          dcmcp_user: mcp_operator
+          # Default working directory: the existing account's passwd home.
+          # Process HOME is /var/lib/desktop-commander-mcp/home.

@@ -1,0 +1,26 @@
+---
+- name: Stop and disable the managed runtime
+  ansible.builtin.import_tasks: deactivate.yml
+
+- name: Remove managed installation files while preserving the runtime user's files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/etc/systemd/system/{{ dcmcp_service }}"
+    - "{{ dcmcp_prefix }}"
+    - "{{ dcmcp_helpers }}"
+    - "{{ dcmcp_examples }}"
+    - /var/cache/desktop-commander-mcp
+    - /var/lib/desktop-commander-mcp/activation.sha256
+
+# Preserve /var/lib/desktop-commander-mcp/home, including manually created secrets.
+- name: Reload systemd after uninstall
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Forget any unloaded failed unit state
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, reset-failed, "{{ dcmcp_service }}"]
+  changed_when: false
+  failed_when: false

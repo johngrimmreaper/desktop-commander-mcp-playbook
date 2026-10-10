@@ -1,0 +1,45 @@
+# Configuration companion
+
+These examples are installed separately from the active files.
+
+| Example | Active location |
+| --- | --- |
+| tunnel.yaml.example | {{ dcmcp_tunnel_config }} |
+| desktop-commander.json.example | {{ dcmcp_desktop_config }} |
+| Runtime key: no credential-bearing example file | {{ dcmcp_runtime_key }} |
+
+Copy both examples **manually**, as {{ dcmcp_user }}, using `cp -n` and a
+`umask 077` shell. Refuse to overwrite an existing active file.
+The install role never copies examples into active paths.
+
+The YAML is valid and commented. The Desktop Commander JSON is **strict JSON**:
+no comments, trailing commas or YAML conversion are used. This document explains
+its fields:
+
+- `blockedCommands: []`: consciously use the existing user's Linux permissions
+  and sudo access. There is no added command denylist or sudoers policy.
+- `defaultShell`: an absolute executable shell path; default `/bin/bash`.
+- `allowedDirectories: []`: upstream semantics mean unrestricted filesystem
+  access within the process/user permissions, not "deny everything".
+  To select paths, provide absolute existing readable directories.
+- `telemetryEnabled: false`: opt out of Desktop Commander usage telemetry.
+- `fileWriteLineLimit` and `fileReadLineLimit`: positive integers, 1000 here.
+- Both welcome flags are disabled for a headless server; the process also uses
+  `--no-onboarding`. Upstream may add metadata/counters to this writable JSON.
+
+The runtime API key file contains **one runtime key**, with an optional final
+newline. Do not use an administrative key. Its owner must be {{ dcmcp_user }},
+its mode exactly 0600; its immediate parent and the two config directories must
+be owned by {{ dcmcp_user }} and mode 0700. Do not put credentials in inventory,
+extra-vars, shell history or process command lines.
+
+Runtime process home: {{ dcmcp_home }}. Working directory: {{ dcmcp_workdir }}.
+This dedicated HOME belongs to the existing {{ dcmcp_user }} account and keeps
+the daemon's config/caches separate from interactive Desktop Commander clients.
+Desktop Commander determines its real config path from process HOME, regardless
+of WorkingDirectory.
+
+Run preflight as the runtime user, then activate through the activation playbook.
+No daemon, MCP handshake, or network call is started by the local preflight.
+Online validation and discovery happen after activation; static checks cannot
+prove account eligibility or that a key has Tunnels Read + Use permissions.

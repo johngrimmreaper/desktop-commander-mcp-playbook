@@ -1,0 +1,24 @@
+# Operator-created inventory, configs and credentials.
+inventory/hosts.yml
+inventory/group_vars/
+inventory/host_vars/
+*.vault
+.vault-password*
+*.key
+*.pem
+*.env
+tunnel.yaml
+config.json
+local/
+secrets/
+# Local validation/build outputs.
+.venv/
+__pycache__/
+*.py[cod]
+.ansible/
+.ansible-lint-cache/
+.ruff_cache/
+*.retry
+*.log
+*.zip
+*.tar.*

@@ -1,0 +1,3 @@
+#!/bin/sh
+# Only MCP JSON-RPC frames may go to stdout. exec preserves pipes and signals.
+exec {{ dcmcp_prefix }}/current/node/bin/node {{ dcmcp_prefix }}/current/mcp/dist/index.js --no-onboarding

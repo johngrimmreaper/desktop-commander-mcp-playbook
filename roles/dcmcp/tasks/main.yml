@@ -1,0 +1,216 @@
+---
+- name: Load runtime context
+  ansible.builtin.import_tasks: context.yml
+
+- name: Validate immutable source and download pins
+  ansible.builtin.assert:
+    that:
+      - dcmcp_desktop_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - dcmcp_desktop_revision is match('^[0-9a-f]{40}$')
+      - dcmcp_lock_blob is match('^[0-9a-f]{40}$')
+      - dcmcp_node_version is match('^24\.[0-9]+\.[0-9]+$')
+      - dcmcp_tunnel_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - dcmcp_node_checksums[ansible_facts['architecture']] is match('^[0-9a-f]{64}$')
+      - dcmcp_tunnel_checksums[ansible_facts['architecture']] is match('^[0-9a-f]{64}$')
+    fail_msg: Pin compatible versions, source/lock SHAs and both archive checksums before installing.
+
+- name: Reject unexpected filesystem objects before changing installation paths
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - |
+        import pathlib, stat, sys
+        uid = int(sys.argv[1])
+        home = pathlib.Path(sys.argv[2])
+        groups = {
+            0: [
+                pathlib.Path("/opt/desktop-commander-mcp"),
+                pathlib.Path("/opt/desktop-commander-mcp/releases"),
+                pathlib.Path("/usr/local/libexec/desktop-commander-mcp"),
+                pathlib.Path("/usr/local/share/desktop-commander-mcp"),
+                pathlib.Path("/var/cache/desktop-commander-mcp"),
+                pathlib.Path("/var/lib/desktop-commander-mcp"),
+            ],
+            uid: [
+                home,
+                home / ".config",
+                home / ".config/desktop-commander-mcp",
+                home / ".claude-server-commander",
+            ],
+        }
+        for owner, paths in groups.items():
+            for path in paths:
+                for parent in path.parents:
+                    if parent.is_symlink():
+                        raise SystemExit("An installation/config parent is a symbolic link")
+                if path.exists() or path.is_symlink():
+                    info = path.lstat()
+                    if not stat.S_ISDIR(info.st_mode) or info.st_uid != owner:
+                        raise SystemExit("An installation/config path has an unexpected type/owner")
+      - "{{ dcmcp_uid }}"
+      - "{{ dcmcp_home }}"
+  changed_when: false
+
+- name: Install OS dependencies from Ubuntu's authenticated package repositories
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - git
+      - xz-utils
+      - unzip
+      - python3
+      - python3-yaml
+      - ripgrep
+      - debianutils
+      - build-essential
+      - libatomic1
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+
+- name: Create root-owned installation paths
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ dcmcp_prefix }}"
+    - "{{ dcmcp_prefix }}/releases"
+    - "{{ dcmcp_helpers }}"
+    - "{{ dcmcp_examples }}"
+    - /var/cache/desktop-commander-mcp
+    - /var/lib/desktop-commander-mcp
+
+- name: Create the dedicated process home for the existing runtime user
+  ansible.builtin.file:
+    path: "{{ dcmcp_home }}"
+    state: directory
+    owner: "{{ dcmcp_user }}"
+    group: "{{ dcmcp_gid }}"
+    mode: "0700"
+
+- name: Inspect the existing XDG configuration parent
+  ansible.builtin.stat:
+    path: "{{ dcmcp_home }}/.config"
+    follow: false
+  register: dcmcp_xdg_parent
+
+- name: Create the XDG parent only when absent
+  ansible.builtin.file:
+    path: "{{ dcmcp_home }}/.config"
+    state: directory
+    owner: "{{ dcmcp_user }}"
+    group: "{{ dcmcp_gid }}"
+    mode: "0700"
+  when: not dcmcp_xdg_parent.stat.exists
+
+- name: Create runtime directories without writing active configuration files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ dcmcp_user }}"
+    group: "{{ dcmcp_gid }}"
+    mode: "0700"
+  loop:
+    - "{{ dcmcp_config_dir }}"
+    - "{{ dcmcp_home }}/.claude-server-commander"
+
+- name: Require an existing runtime working directory
+  ansible.builtin.stat:
+    path: "{{ dcmcp_workdir }}"
+  register: dcmcp_workdir_stat
+
+- name: Validate the working directory
+  ansible.builtin.assert:
+    that:
+      - dcmcp_workdir_stat.stat.isdir | default(false)
+    fail_msg: Create the desired working directory manually before installation.
+
+- name: Stage the complete versioned release
+  ansible.builtin.import_tasks: release.yml
+
+- name: Install the preflight helper
+  ansible.builtin.copy:
+    src: preflight.py
+    dest: "{{ dcmcp_helpers }}/preflight.py"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the foreground supervisor launcher
+  ansible.builtin.template:
+    src: run.py.j2
+    dest: "{{ dcmcp_helpers }}/run"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the MCP stdio child launcher
+  ansible.builtin.template:
+    src: mcp-child.j2
+    dest: "{{ dcmcp_helpers }}/mcp-child"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the atomic release selector
+  ansible.builtin.copy:
+    src: select-release.py
+    dest: "{{ dcmcp_helpers }}/select-release.py"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install commented examples in the examples directory only
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ dcmcp_examples }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {src: tunnel.yaml.example.j2, dest: tunnel.yaml.example}
+    - {src: desktop-commander.json.example.j2, dest: desktop-commander.json.example}
+    - {src: configuration.md.j2, dest: configuration.md}
+
+- name: Inspect whether a systemd unit already exists
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ dcmcp_service }}"
+  register: dcmcp_existing_unit
+
+- name: Record unit existence before installing the new definition
+  ansible.builtin.service_facts:
+
+- name: Install the systemd unit without starting or restarting it
+  ansible.builtin.template:
+    src: desktop-commander-mcp.service.j2
+    dest: "/etc/systemd/system/{{ dcmcp_service }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Flush the unit reload only
+  ansible.builtin.meta: flush_handlers
+
+- name: Disable a newly installed unit without starting it
+  ansible.builtin.systemd_service:
+    name: "{{ dcmcp_service }}"
+    enabled: false
+  when:
+    - not dcmcp_existing_unit.stat.exists
+    - dcmcp_service not in ansible_facts['services']
+
+- name: Verify the installed unit definition
+  ansible.builtin.command:
+    argv: [/usr/bin/systemd-analyze, verify, "/etc/systemd/system/{{ dcmcp_service }}"]
+  changed_when: false
+
+- name: Show the staged release identifier
+  ansible.builtin.debug:
+    msg: >-
+      Installed {{ dcmcp_release_id }}. No active configs were copied,
+      no current-release selector was changed, and activation is a separate playbook.

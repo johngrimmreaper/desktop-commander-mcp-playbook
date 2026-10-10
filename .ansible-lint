@@ -1,0 +1,8 @@
+---
+profile: basic
+exclude_paths:
+  - .venv/
+  - inventory/hosts.yml
+  - inventory/group_vars/
+  - inventory/host_vars/
+# All role variables use the dcmcp_ namespace.

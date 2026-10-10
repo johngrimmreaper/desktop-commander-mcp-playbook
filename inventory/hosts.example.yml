@@ -1,0 +1,12 @@
+---
+all:
+  children:
+    mcp_servers:
+      hosts:
+        ubuntu_mcp:
+          ansible_host: REPLACE_WITH_SERVER_ADDRESS
+          ansible_user: mcp_operator
+          # Native Ubuntu 26.04 only; no Docker runtime dependency.
+          # Existing sudo only; pass --ask-become-pass if the host requires it.
+          # ansible_become_password belongs in Ansible Vault, never here.
+          # dcmcp_workdir: /home/mcp_operator/Projects

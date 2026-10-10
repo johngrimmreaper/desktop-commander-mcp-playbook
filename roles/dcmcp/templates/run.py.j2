@@ -1,0 +1,33 @@
+#!/usr/bin/python3
+"""Hold one host-local instance lock, validate offline, then exec the official daemon."""
+import fcntl
+import os
+from pathlib import Path
+import sys
+
+sys.path.insert(0, "{{ dcmcp_helpers }}")
+from preflight import Context, InvalidConfig, runtime_environment, validate
+
+ctx = Context("{{ dcmcp_user }}", {{ dcmcp_uid }}, Path("{{ dcmcp_home }}"),
+              Path("{{ dcmcp_workdir }}"))
+try:
+    lock = os.open("/run/desktop-commander-mcp/instance.lock",
+                   os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    # The lock must survive exec into tunnel-client; its MCP child does not own it.
+    os.set_inheritable(lock, True)
+    validate(ctx, check_port=True)
+    release = (ctx.prefix / "current").resolve(strict=True)
+    os.chdir(ctx.workdir)
+    os.execve(release / "tunnel/tunnel-client",
+              [str(release / "tunnel/tunnel-client"), "run", "--config", str(ctx.config)],
+              runtime_environment(ctx, release))
+except BlockingIOError:
+    print("Startup refused: another managed tunnel instance holds the local lock.", file=sys.stderr)
+    sys.exit(78)
+except InvalidConfig as error:
+    print("Startup refused: " + str(error), file=sys.stderr)
+    sys.exit(78)
+except (OSError, ValueError, KeyError, TypeError):
+    print("Startup refused: runtime files or dependencies are invalid.", file=sys.stderr)
+    sys.exit(78)

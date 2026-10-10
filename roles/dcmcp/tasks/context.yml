@@ -1,0 +1,61 @@
+---
+- name: Require the supported native Ubuntu systemd baseline
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Ubuntu'
+      - ansible_facts['distribution_version'] == '26.04'
+      - ansible_facts['architecture'] in ['x86_64', 'aarch64']
+      - ansible_facts['service_mgr'] == 'systemd'
+      - ansible_facts.get('virtualization_type', '') not in ['docker', 'podman', 'container', 'lxc', 'lxd']
+      - ansible_version['full'] is version('2.21', '>=')
+      - ansible_version['full'] is version('2.22', '<')
+      - not ansible_check_mode
+      - dcmcp_user is match('^[a-z_][a-z0-9_-]*$')
+      - dcmcp_home == '/var/lib/desktop-commander-mcp/home'
+      - dcmcp_prefix == '/opt/desktop-commander-mcp'
+      - dcmcp_helpers == '/usr/local/libexec/desktop-commander-mcp'
+      - dcmcp_service == 'desktop-commander-mcp.service'
+    fail_msg: >-
+      The only supported target is native Ubuntu 26.04, amd64/arm64, with systemd.
+      Use --syntax-check for a read-only check; --check is not a staged install.
+
+- name: Look up the existing runtime user
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ dcmcp_user }}"
+    fail_key: true
+
+- name: Derive the existing account home and primary group
+  ansible.builtin.set_fact:
+    dcmcp_account_home: "{{ ansible_facts['getent_passwd'][dcmcp_user][4] }}"
+    dcmcp_gid: "{{ ansible_facts['getent_passwd'][dcmcp_user][2] }}"
+    dcmcp_uid: "{{ ansible_facts['getent_passwd'][dcmcp_user][1] }}"
+
+- name: Validate fixed paths and release identifiers
+  ansible.builtin.assert:
+    that:
+      - dcmcp_uid | int > 0
+      - dcmcp_account_home is match('^/[A-Za-z0-9_./-]+$')
+      - dcmcp_workdir is match('^/[A-Za-z0-9_./-]+$')
+      - dcmcp_config_dir == dcmcp_home + '/.config/desktop-commander-mcp'
+      - dcmcp_tunnel_config == dcmcp_config_dir + '/tunnel.yaml'
+      - dcmcp_runtime_key == dcmcp_config_dir + '/runtime.key'
+      - dcmcp_desktop_config == dcmcp_home + '/.claude-server-commander/config.json'
+      - dcmcp_examples == '/usr/local/share/desktop-commander-mcp'
+      - dcmcp_release_id is match('^[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')
+      - dcmcp_target_release is match('^[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')
+    fail_msg: Invalid paths or release identifier; no user or sudoers changes are made.
+
+- name: Inspect the existing account home
+  ansible.builtin.stat:
+    path: "{{ dcmcp_account_home }}"
+    follow: false
+  register: dcmcp_account_home_stat
+
+- name: Require an existing real account home owned by the runtime user
+  ansible.builtin.assert:
+    that:
+      - dcmcp_account_home_stat.stat.isdir | default(false)
+      - not dcmcp_account_home_stat.stat.islnk | default(false)
+      - dcmcp_account_home_stat.stat.uid == dcmcp_uid | int
+    fail_msg: The existing runtime user must own a real account home directory.

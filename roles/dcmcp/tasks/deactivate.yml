@@ -1,0 +1,13 @@
+---
+- name: Load runtime context
+  ansible.builtin.import_tasks: context.yml
+
+- name: Gather unit state
+  ansible.builtin.service_facts:
+
+- name: Stop the daemon and children and disable boot activation
+  ansible.builtin.systemd_service:
+    name: "{{ dcmcp_service }}"
+    enabled: false
+    state: stopped
+  when: dcmcp_service in ansible_facts['services']

@@ -1,0 +1,36 @@
+# EXAMPLE ONLY: the playbook never writes the active file.
+# MANUALLY copy to {{ dcmcp_tunnel_config }}, as {{ dcmcp_user }}, mode 0600.
+# Replace the tunnel_id placeholder; place the runtime API key in the file below.
+# Do not add OPENAI_ADMIN_KEY or place a literal API key in this YAML.
+# Availability and permission grants are handled in the OpenAI account/workspace.
+config_version: 2
+control_plane:
+  # Host root only. All control-plane traffic is outbound HTTPS on port 443.
+  base_url: https://api.openai.com
+  # Must be tunnel_ followed by exactly 32 lowercase hexadecimal characters.
+  tunnel_id: REPLACE_WITH_PROVISIONED_TUNNEL_ID
+  # Native upstream file: reference. Secret stays out of argv and child env.
+  # The secret file must be owned by {{ dcmcp_user }}, mode 0600, no symlinks.
+  api_key: file:{{ dcmcp_runtime_key }}
+mcp:
+  # Exactly one main stdio binding; the daemon owns this child.
+  # Never start mcp-child separately or run another daemon for this tunnel ID.
+  commands:
+    - channel: main
+      command: {{ dcmcp_helpers }}/mcp-child
+  # Keeps the upstream default; the caller owns MCP initialization.
+  stdio_send_initialized_notification: false
+  forward_trace_context: false
+  # Conservative concurrency. Accepted range in this project is 1..100.
+  max_concurrent_requests: 10
+log:
+  level: info
+  format: json
+  # Journal collects output. Never enable unsafe raw HTTP logging.
+health:
+  # Local operators only; no public MCP listener or inbound firewall rule.
+  # Select a free loopback port and use it in diagnostic commands.
+  listen_addr: 127.0.0.1:8787
+admin_ui:
+  open_browser: false
+  allow_remote: false

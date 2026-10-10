@@ -1,0 +1,41 @@
+---
+dcmcp_user: mcp_operator
+# A dedicated process HOME avoids sharing config/caches with interactive MCP clients.
+# The account and its existing sudo rights remain unchanged.
+dcmcp_home: /var/lib/desktop-commander-mcp/home
+dcmcp_workdir: "{{ dcmcp_account_home }}"
+dcmcp_prefix: /opt/desktop-commander-mcp
+dcmcp_helpers: /usr/local/libexec/desktop-commander-mcp
+dcmcp_examples: /usr/local/share/desktop-commander-mcp
+dcmcp_service: desktop-commander-mcp.service
+dcmcp_config_dir: "{{ dcmcp_home }}/.config/desktop-commander-mcp"
+dcmcp_tunnel_config: "{{ dcmcp_config_dir }}/tunnel.yaml"
+dcmcp_runtime_key: "{{ dcmcp_config_dir }}/runtime.key"
+dcmcp_desktop_config: "{{ dcmcp_home }}/.claude-server-commander/config.json"
+
+# Version + source revision are explicit; no @latest, npx or floating branch.
+dcmcp_desktop_version: "0.2.52"
+dcmcp_desktop_revision: c774c3b505de990219637ecdc9a830c8772fae9d
+dcmcp_lock_blob: 5aa49fbc9b44e6506d79b1481d608ff819fd7fc7
+dcmcp_node_version: "24.21.0"
+dcmcp_tunnel_version: "0.0.16"
+# SHA-256 values obtained from primary sources; see docs/upstream.md.
+dcmcp_node_checksums:
+  x86_64: fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+  aarch64: 6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2
+dcmcp_tunnel_checksums:
+  x86_64: d60cdba019bce451bcc3a15478cc5b9cb11270b049f5b56ea39a80b517f8b117
+  aarch64: 963d0384aaa7c798778479c45673f9051a4039dd891aef8f8978d2a1a628b74f
+dcmcp_node_arches:
+  x86_64: x64
+  aarch64: arm64
+dcmcp_tunnel_arches:
+  x86_64: amd64
+  aarch64: arm64
+dcmcp_release_id: >-
+  dc-{{ dcmcp_desktop_version }}-{{ dcmcp_desktop_revision[:12] }}-node-{{ dcmcp_node_version }}-tunnel-{{ dcmcp_tunnel_version }}-{{ ansible_facts['architecture'] }}
+# Override this with an installed release ID for rollback. Never a path.
+dcmcp_target_release: "{{ dcmcp_release_id }}"
+# Force a restart when needed; otherwise activation compares its input fingerprint.
+dcmcp_restart: false
+# Uninstall preserves active configs, keys, home/work files and OS dependencies.
