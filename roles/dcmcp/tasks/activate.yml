@@ -17,16 +17,21 @@
     fail_msg: The current selector is not a managed root-owned release link.
   when: dcmcp_current.stat.exists | default(false) or dcmcp_current.stat.islnk | default(false)
 
-- name: Gather the previous service state
-  ansible.builtin.service_facts:
+# Ansible service facts can report status=failed instead of the unit's enablement.
+# Query the two independent systemd properties so rescue preserves boot policy.
+- name: Gather the previous runtime and enablement states independently
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, show, "{{ dcmcp_service }}", --property=ActiveState, --property=UnitFileState]
+  register: dcmcp_previous_state
+  changed_when: false
 
 - name: Remember the previous selection and enablement
   ansible.builtin.set_fact:
     dcmcp_previous_release: "{{ dcmcp_current.stat.lnk_source | default('') | basename }}"
     dcmcp_previous_enabled: >-
-      {{ ansible_facts['services'].get(dcmcp_service, {}).get('status', '') == 'enabled' }}
+      {{ 'UnitFileState=enabled' in dcmcp_previous_state.stdout_lines }}
     dcmcp_previous_running: >-
-      {{ ansible_facts['services'].get(dcmcp_service, {}).get('state', '') == 'running' }}
+      {{ 'ActiveState=active' in dcmcp_previous_state.stdout_lines }}
 
 - name: Compute the private activation fingerprint after successful offline validation
   become: true

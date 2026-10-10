@@ -223,6 +223,11 @@ def main():
         run(["sudo", "-n", "mkdir", "-m", "0755", str(previous)])
         run(["sudo", "-n", "install", "-m", "0644", str(saved), str(previous / "release.json")])
         run(["sudo", "-n", "/usr/bin/python3", str(selector), previous.name])
+        # A failed unit can still be enabled; rollback must preserve that policy.
+        install_unit("--fail")
+        run(["sudo", "-n", "systemctl", "daemon-reload"])
+        run(["sudo", "-n", "systemctl", "start", unit])
+        wait_failed(unit)
         run(["sudo", "-n", "systemctl", "enable", unit])
         if (isolated / "current").resolve() != previous:
             raise RuntimeError("The previous selector fixture is not readable.")
@@ -235,7 +240,7 @@ def main():
                                        "expected_selector": str(previous), "state": status,
                                        "stamp_exists": stamp.exists()})
                                + "\n" + failure.stdout + failure.stderr)
-        print("PASS: failed replacement restores the previous selector and enablement, stopped.",
+        print("PASS: failed replacement preserves a failed-but-enabled prior unit and selector.",
               flush=True)
         unrelated.shutdown()
         unrelated.server_close()
