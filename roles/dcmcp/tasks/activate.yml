@@ -75,10 +75,9 @@
   register: dcmcp_validated_yaml
   no_log: true
 
-- name: Derive the local readiness URL
+- name: Derive the local health listener address
   ansible.builtin.set_fact:
-    dcmcp_ready_url: >-
-      {{ 'http://' + (dcmcp_validated_yaml.content | b64decode | from_yaml)['health']['listen_addr'] + '/readyz' }}
+    dcmcp_health_address: "{{ (dcmcp_validated_yaml.content | b64decode | from_yaml)['health']['listen_addr'] }}"
   no_log: true
 
 - name: Switch or restart only after validation and complete cgroup shutdown
@@ -127,14 +126,19 @@
         enabled: true
         state: started
 
-    - name: Require local tunnel readiness after activation
-      ansible.builtin.uri:
-        url: "{{ dcmcp_ready_url }}"
-        use_proxy: false
-        status_code: 200
-        timeout: 3
+    # HTTP 200 alone can come from another process while this unit has failed.
+    # Verify its main PID owns the listener and remains the same across the request.
+    - name: Require readiness from the managed daemon after activation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - "{{ dcmcp_helpers }}/readiness.py"
+          - --unit
+          - "{{ dcmcp_service }}"
+          - --listen-addr
+          - "{{ dcmcp_health_address }}"
       register: dcmcp_readiness
-      until: dcmcp_readiness.status | default(0) == 200
+      until: dcmcp_readiness.rc == 0
       retries: 30
       delay: 2
       changed_when: false
@@ -185,12 +189,15 @@
     state: started
   when: not dcmcp_needs_restart | bool
 
-- name: Verify local readiness for an unchanged running release
-  ansible.builtin.uri:
-    url: "{{ dcmcp_ready_url }}"
-    use_proxy: false
-    status_code: 200
-    timeout: 3
+- name: Verify managed daemon readiness for an unchanged running release
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ dcmcp_helpers }}/readiness.py"
+      - --unit
+      - "{{ dcmcp_service }}"
+      - --listen-addr
+      - "{{ dcmcp_health_address }}"
   changed_when: false
   when: not dcmcp_needs_restart | bool
   no_log: true

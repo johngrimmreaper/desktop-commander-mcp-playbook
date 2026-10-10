@@ -59,7 +59,7 @@ class PreflightTests(unittest.TestCase):
         self.write(self.release / "node/lib/node_modules/npm/bin/npm-cli.js", "// fixture", 0o644)
         for binary in ("node/bin/node", "tunnel/tunnel-client"):
             self.write(self.release / binary, "#!/bin/sh\nexit 0\n", 0o755)
-        for helper in ("preflight.py", "run", "mcp-child"):
+        for helper in ("preflight.py", "readiness.py", "run", "mcp-child"):
             self.write(self.ctx.helpers / helper, "# fixture only\n", 0o755)
         self.write(self.ctx.unit, "# fixture only\n", 0o644)
         self.tunnel = {

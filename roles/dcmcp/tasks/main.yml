@@ -140,6 +140,14 @@
     group: root
     mode: "0755"
 
+- name: Install the managed daemon readiness helper
+  ansible.builtin.copy:
+    src: readiness.py
+    dest: "{{ dcmcp_helpers }}/readiness.py"
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Install the foreground supervisor launcher
   ansible.builtin.template:
     src: run.py.j2

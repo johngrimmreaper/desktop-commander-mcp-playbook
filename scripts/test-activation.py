@@ -2,12 +2,14 @@
 """Run real post-preflight activation tasks against private, local systemd fixtures."""
 import copy
 import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
 import pwd
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 
@@ -77,6 +79,7 @@ def main():
     root = Path(temporary)
     env = dict(os.environ, ANSIBLE_CONFIG=str(ROOT / "ansible.cfg"),
                PYTHONDONTWRITEBYTECODE="1")
+    unrelated = None
     try:
         home = root / "home"
         tunnel = home / ".config/desktop-commander-mcp/tunnel.yaml"
@@ -103,6 +106,10 @@ def main():
         isolated = root / "installation"
         candidate = isolated / "releases" / release.name
         run(["sudo", "-n", "mkdir", "-p", str(candidate)])
+        # sudo can inherit this test's private umask. Keep non-secret root-owned
+        # fixture directories traversable so selector assertions inspect real links.
+        run(["sudo", "-n", "chmod", "0755", str(isolated), str(isolated / "releases"),
+             str(candidate)])
         saved = root / "release.json"
         saved.write_bytes(manifest)
         run(["sudo", "-n", "install", "-m", "0644", str(saved), str(candidate / "release.json")])
@@ -161,7 +168,8 @@ def main():
         run(["sudo", "-n", "systemctl", "daemon-reload"])
         activate()
         first = properties(unit)
-        if first["ActiveState"] != "active" or int(first["MainPID"]) <= 0 or not stamp.is_file():
+        if (first["ActiveState"] != "active" or int(first["MainPID"]) <= 0
+                or not stamp.is_file() or (isolated / "current").resolve() != candidate):
             raise RuntimeError("First activation did not start and record the private fixture.")
         print("PASS: a fresh disabled unit activates after daemon-reload.", flush=True)
         second = activate()
@@ -184,7 +192,74 @@ def main():
         install_unit()
         activate(force=True)
         print("PASS: recovery activates after a prior configuration failure.", flush=True)
+        run(["sudo", "-n", "systemctl", "stop", unit])
+        run(["sudo", "-n", "systemctl", "disable", unit])
+        run(["sudo", "-n", "rm", "-f", str(stamp), str(isolated / "current")])
+
+        class UnrelatedHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ready\\n")
+            def log_message(self, *_args):
+                pass
+
+        host, port = address.split(":")
+        unrelated = ThreadingHTTPServer((host, int(port)), UnrelatedHandler)
+        threading.Thread(target=unrelated.serve_forever, daemon=True).start()
+        for option, label in (("--fail", "failed unit"), ("--idle", "running unit without its own listener")):
+            install_unit(option)
+            activate(expected=2)
+            status = properties(unit)
+            if (stamp.exists() or (isolated / "current").exists()
+                    or (isolated / "current").is_symlink()
+                    or status["UnitFileState"] != "disabled" or int(status["MainPID"]) != 0):
+                raise RuntimeError("Failed first activation recorded success or did not restore state.")
+            print(f"PASS: unrelated HTTP 200 cannot hide a {label}; first activation is undone.",
+                  flush=True)
+
+        # A failed replacement restores its old selector/enablement and stays stopped.
+        previous = isolated / "releases/previous-fixture"
+        run(["sudo", "-n", "mkdir", "-m", "0755", str(previous)])
+        run(["sudo", "-n", "install", "-m", "0644", str(saved), str(previous / "release.json")])
+        run(["sudo", "-n", "/usr/bin/python3", str(selector), previous.name])
+        run(["sudo", "-n", "systemctl", "enable", unit])
+        if (isolated / "current").resolve() != previous:
+            raise RuntimeError("The previous selector fixture is not readable.")
+        failure = activate(expected=2, force=True)
+        status = properties(unit)
+        if ((isolated / "current").resolve() != previous or status["UnitFileState"] != "enabled"
+                or int(status["MainPID"]) != 0 or stamp.exists()):
+            raise RuntimeError("Failed replacement did not restore its prior stopped selection: "
+                               + repr({"selector": str((isolated / "current").resolve()),
+                                       "expected_selector": str(previous), "state": status,
+                                       "stamp_exists": stamp.exists()})
+                               + "\n" + failure.stdout + failure.stderr)
+        print("PASS: failed replacement restores the previous selector and enablement, stopped.",
+              flush=True)
+        unrelated.shutdown()
+        unrelated.server_close()
+        unrelated = None
+        install_unit()
+        activate()
+        print("PASS: a valid replacement recovers after failed readiness.", flush=True)
+
+        # Preserve the success stamp while a wrong listener answers for an idle service.
+        # This exercises the unchanged-input branch, not just the replacement branch.
+        run(["sudo", "-n", "systemctl", "stop", unit])
+        unrelated = ThreadingHTTPServer((host, int(port)), UnrelatedHandler)
+        threading.Thread(target=unrelated.serve_forever, daemon=True).start()
+        install_unit("--idle")
+        run(["sudo", "-n", "systemctl", "daemon-reload"])
+        run(["sudo", "-n", "systemctl", "start", unit])
+        activate(expected=2)
+        if properties(unit)["ActiveState"] != "active":
+            raise RuntimeError("Unchanged readiness unexpectedly mutated the running fixture.")
+        print("PASS: unchanged activation rejects an unrelated health listener.", flush=True)
     finally:
+        if unrelated:
+            unrelated.shutdown()
+            unrelated.server_close()
         for action in ("stop", "disable", "reset-failed"):
             subprocess.run(["sudo", "-n", "systemctl", action, unit], capture_output=True,
                            text=True, check=False)

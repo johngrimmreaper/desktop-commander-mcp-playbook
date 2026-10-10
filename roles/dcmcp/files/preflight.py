@@ -363,7 +363,7 @@ def validate(ctx, release=None, check_port=False, runner=probe):
     validate_key(key_bytes)
     release, manifest_bytes = validate_release(ctx, release or ctx.prefix / "current", runner)
     helper_bytes = [read_file(ctx.helpers / name, 0)
-                    for name in ("preflight.py", "run", "mcp-child")]
+                    for name in ("preflight.py", "readiness.py", "run", "mcp-child")]
     unit_bytes = read_file(ctx.unit, 0)
     require(all(os.access(ctx.helpers / name, os.X_OK) for name in ("run", "mcp-child")),
             "A managed launcher is not executable.")
