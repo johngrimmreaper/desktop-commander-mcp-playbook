@@ -63,6 +63,7 @@ published on 2026-10-06. The release was inspected by tag.
 | Outbound HTTPS and a private MCP server | [architecture](https://github.com/openai/tunnel-client/blob/v0.0.16/docs/architecture.md) |
 | Native YAML, config_version 2 and file: references for runtime keys | [configuration](https://github.com/openai/tunnel-client/blob/v0.0.16/docs/configuration.md), [file_config.go](https://github.com/openai/tunnel-client/blob/v0.0.16/pkg/runtimeconfig/file_config.go), [config.go](https://github.com/openai/tunnel-client/blob/v0.0.16/pkg/runtimeconfig/config.go) |
 | Foreground systemd process with restart | [systemd-vm](https://github.com/openai/tunnel-client/blob/v0.0.16/docs/deployment/systemd-vm.md) |
+| Local readiness is separate from stdio discovery | [health documentation](https://github.com/openai/tunnel-client/blob/v0.0.16/docs/health.md), [health.go](https://github.com/openai/tunnel-client/blob/v0.0.16/pkg/runtimehealth/health.go) |
 | doctor inspects stdio without starting a subprocess | [doctor_command.go](https://github.com/openai/tunnel-client/blob/v0.0.16/cmd/client/doctor_command.go), [stdio_preflight.go](https://github.com/openai/tunnel-client/blob/v0.0.16/cmd/client/stdio_preflight.go) |
 | ZIP files contain files at the archive root | [package_release_archive.sh](https://github.com/openai/tunnel-client/blob/v0.0.16/scripts/package_release_archive.sh) |
 

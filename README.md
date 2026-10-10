@@ -211,7 +211,11 @@ the unit, waits for the cgroup to terminate, switches current atomically and
 starts the new version. An unchanged run keeps the existing instance running.
 The unit is enabled at boot only during this step.
 
-After startup, activation requires HTTP 200 from the local /readyz endpoint.
+After startup, activation requires the managed systemd unit to be active, its
+main process to own the loopback health listener, and /readyz to return HTTP 200.
+The PID, systemd invocation and process start time must remain stable across
+the request. Only then is the private success fingerprint recorded. The same
+check runs for unchanged activation; an unrelated HTTP server cannot satisfy it.
 That response still does not prove tools/list or a successful tool call.
 Stdio discovery may remain not_observed until the connector's first request.
 Invalid launcher configuration returns 78, preventing a restart loop.
@@ -259,15 +263,32 @@ curl -fsS http://127.0.0.1:8787/readyz
 curl -fsS http://127.0.0.1:8787/health/mcp
 ```
 
-Use the port you configured. /health/mcp reports observations from the same
-child; readiness and discovery provide different evidence. Do not expose
-health/UI on the network.
+Use the port you configured. To check that readiness belongs to this managed
+daemon, run the same helper used by activation with existing sudo rights:
+
+```bash
+sudo python3 /usr/local/libexec/desktop-commander-mcp/readiness.py --unit desktop-commander-mcp.service --listen-addr 127.0.0.1:8787
+```
+
+The helper inspects the daemon's Linux /proc descriptors, so run it with sudo.
+The curl commands alone do not establish listener ownership. /health/mcp
+reports observations from the same child; readiness and discovery provide
+different evidence. Do not expose health/UI on the network.
 
 To run preflight directly as mcp_operator, pass the RELEASE_ID reported by installation;
 the current selector does not exist before the first activation:
 
 ```bash
 env HOME=/var/lib/desktop-commander-mcp/home python3 /usr/local/libexec/desktop-commander-mcp/preflight.py --release /opt/desktop-commander-mcp/releases/RELEASE_ID
+```
+
+To validate the installed artifacts before creating active configuration,
+use release-only mode as the runtime user. It checks executable versions, the
+built entry point and native dependencies without reading keys or starting
+either daemon:
+
+```bash
+env HOME=/var/lib/desktop-commander-mcp/home python3 /usr/local/libexec/desktop-commander-mcp/preflight.py --release-only --release /opt/desktop-commander-mcp/releases/RELEASE_ID
 ```
 
 The official client's doctor command is optional. With the daemon stopped,
@@ -307,6 +328,9 @@ enabling it.
    and dcmcp_tunnel_version/checksums using verified official sources. This
    implementation supports Node major version 24.
 2. Run install: the active runtime and current selection stay as they were.
+   Every reused bundle is revalidated; a matching release.json alone is not
+   accepted as proof of a complete installation. A damaged bundle fails without
+   being overwritten. Restore a verified bundle while stopped, or stage a new ID.
 3. Read upstream compatibility notes and update the active files manually.
 4. Run preflight and activate. Each complete bundle contains Node, MCP,
    dependencies and the tunnel, avoiding a mixed-version upgrade.
@@ -357,18 +381,39 @@ Run checks directly in the Ubuntu 26.04 VM or physical host:
 ```bash
 source .venv/bin/activate
 python scripts/check.py
+python scripts/test-ansible-guards.py
 python scripts/test-idempotence.py --local
+python scripts/test-release.py
+python scripts/test-activation.py
 python scripts/test-installed.py --local
 ```
 
-check.py runs positive/negative preflight tests, ruff, ansible-lint and syntax
-checks for all five playbooks. Unit tests use fixtures and simulated dependency
-probes. They do not deploy or contact OpenAI.
+check.py runs positive/negative preflight and readiness tests, ruff, ansible-lint
+and syntax checks for all five playbooks. Unit tests use fixtures and simulated
+dependency/process probes. They do not deploy or contact OpenAI.
+
+test-ansible-guards.py executes the real early role guard with positive native
+facts and negative container/unsupported-release/detector results. Synthetic
+facts model the rejected systems; all execution stays on Ubuntu 26.04.
 
 **test-idempotence.py performs a real installation on this host.** Run it only
 on the development/server host you intend to modify, as an existing user with
 sudo. It runs install twice, requires changed=0 on the second run and verifies
 that active files, current, service state and enablement are preserved.
+
+test-release.py exercises the real release role against the complete installed
+bundle and a temporary root-owned manifest-only bundle. It requires changed=0
+for complete reuse, rejection without modification for damaged reuse, and
+success without any active configuration files.
+
+test-activation.py validates a private offline candidate, then runs the real
+post-preflight activation tasks with isolated selectors, stamps and systemd
+units. It covers fresh and unchanged activation, failed-unit reset, unrelated
+HTTP 200 listeners, failure restoration and failed-but-enabled rollback.
+Only fixture paths/unit names and readiness retry duration are adapted.
+Its local HTTP fixture is a daemon managed by systemd; it does not start the
+OpenAI tunnel or transmit a synthetic key. It preserves production state and
+removes its temporary units and files.
 
 test-installed.py requires native Ubuntu 26.04, the installed bundle and the
 existing runtime account's noninteractive sudo. It creates private temporary
