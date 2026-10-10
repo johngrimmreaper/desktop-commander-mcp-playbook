@@ -101,10 +101,25 @@
       ansible.builtin.systemd_service:
         daemon_reload: true
 
-    - name: Clear any previous start-rate or configuration failure
+    # Reload can unload an inactive, disabled unit. Querying its properties loads
+    # the installed definition; only a retained failed unit needs reset-failed.
+    - name: Inspect the installed unit before clearing a previous failure
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, show, "{{ dcmcp_service }}", --property=LoadState, --property=ActiveState]
+      register: dcmcp_start_state
+      changed_when: false
+
+    - name: Require a loadable installed unit before starting
+      ansible.builtin.assert:
+        that:
+          - "'LoadState=loaded' in dcmcp_start_state.stdout_lines"
+        fail_msg: The installed systemd unit could not be loaded.
+
+    - name: Clear a retained start-rate or configuration failure
       ansible.builtin.command:
         argv: [/usr/bin/systemctl, reset-failed, "{{ dcmcp_service }}"]
       changed_when: false
+      when: "'ActiveState=failed' in dcmcp_start_state.stdout_lines"
 
     - name: Enable and start the explicitly activated daemon
       ansible.builtin.systemd_service:
