@@ -283,3 +283,21 @@
         argv: [/usr/bin/mv, -T, "--", "{{ dcmcp_stage_path }}", "{{ dcmcp_release_path }}"]
         creates: "{{ dcmcp_release_path }}/release.json"
       changed_when: true
+
+# A matching completion manifest is not proof that its artifacts still exist.
+# Use the current controller helper even before the installed helper is updated.
+- name: Validate the immutable bundle before accepting a new or reused release
+  become: true
+  become_user: "{{ dcmcp_user }}"
+  ansible.builtin.script:
+    cmd: >-
+      {{ (role_path + '/files/preflight.py') | quote }}
+      --release-only
+      --user {{ dcmcp_user | quote }}
+      --home {{ dcmcp_home | quote }}
+      --workdir {{ dcmcp_workdir | quote }}
+      --release {{ dcmcp_release_path | quote }}
+    executable: /usr/bin/python3
+  environment:
+    HOME: "{{ dcmcp_home }}"
+  changed_when: false

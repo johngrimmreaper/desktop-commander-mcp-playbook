@@ -348,11 +348,15 @@ def validate_release(ctx, release, runner=probe):
     return release, manifest_bytes
 
 
-def validate(ctx, release=None, check_port=False, runner=probe):
+def validate_runtime_context(ctx):
     require(os.geteuid() == ctx.uid, "Run preflight as the configured runtime user, not root.")
     require(os.environ.get("HOME") == str(ctx.home), "Process HOME does not match the runtime home.")
     require(ctx.workdir.is_dir() and os.access(ctx.workdir, os.R_OK | os.W_OK | os.X_OK),
             "The working directory is missing or not accessible to the runtime user.")
+
+
+def validate(ctx, release=None, check_port=False, runner=probe):
+    validate_runtime_context(ctx)
     private_directory(ctx.config.parent, ctx.uid)
     private_directory(ctx.desktop_config.parent, ctx.uid)
     tunnel_bytes = read_file(ctx.config, ctx.uid, private=True, limit=65536)
@@ -389,6 +393,8 @@ def main():
     parser.add_argument("--home", default="/var/lib/desktop-commander-mcp/home",
                         help="Process HOME; override only for isolated offline test fixtures")
     parser.add_argument("--release")
+    parser.add_argument("--release-only", action="store_true",
+                        help="Validate immutable artifacts without requiring active configuration")
     parser.add_argument("--fingerprint", action="store_true")
     parser.add_argument("--check-port", action="store_true")
     args = parser.parse_args()
@@ -396,7 +402,14 @@ def main():
         account = pwd.getpwnam(args.user)
         ctx = Context(args.user, account.pw_uid, absolute_path(args.home),
                       absolute_path(args.workdir or account.pw_dir))
-        result = validate(ctx, args.release, args.check_port)
+        if args.release_only:
+            require(args.release and not args.fingerprint and not args.check_port,
+                    "Release-only validation requires --release without activation options.")
+            validate_runtime_context(ctx)
+            validate_release(ctx, args.release)
+            result = "Release validation passed (offline; no active configuration required)."
+        else:
+            result = validate(ctx, args.release, args.check_port)
     except InvalidConfig as error:
         print("Preflight failed: " + str(error), file=sys.stderr)
         return 78
@@ -404,7 +417,8 @@ def main():
         print("Preflight failed: required files, user or dependencies are unavailable/invalid.",
               file=sys.stderr)
         return 78
-    print(result if args.fingerprint else "Preflight passed (offline; no daemon or MCP started).")
+    print(result if args.fingerprint or args.release_only
+          else "Preflight passed (offline; no daemon or MCP started).")
     return 0
 
 

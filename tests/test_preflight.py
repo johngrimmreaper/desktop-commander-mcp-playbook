@@ -274,6 +274,24 @@ class PreflightTests(unittest.TestCase):
             raise pf.InvalidConfig("An installed dependency failed its compatibility probe.")
         self.assert_invalid(lambda: self.validate(failed_dependency))
 
+    def test_immutable_release_validation_does_not_require_active_configuration(self):
+        for path in (self.ctx.config, self.ctx.desktop_config, self.ctx.key):
+            path.unlink()
+        test = self
+        def root_owned_lstat(path, *args, **kwargs):
+            return test.fake_lstat(path, *args, **kwargs)
+        with patch.object(Path, "lstat", root_owned_lstat), \
+                patch.object(pf, "read_file", side_effect=self.installed_read):
+            release, _manifest = pf.validate_release(self.ctx, self.release, self.fake_probe)
+        self.assertEqual(self.release, release)
+        self.assertFalse(self.ctx.config.exists())
+        self.assertFalse(self.ctx.desktop_config.exists())
+        self.assertFalse(self.ctx.key.exists())
+
+    def test_matching_manifest_does_not_hide_missing_runtime_binary(self):
+        (self.release / "node/bin/node").unlink()
+        self.assert_invalid(self.validate)
+
     def test_missing_entrypoint_fails(self):
         (self.release / "mcp/dist/index.js").unlink()
         self.assert_invalid(self.validate)
