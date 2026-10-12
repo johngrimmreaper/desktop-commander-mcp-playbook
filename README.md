@@ -1,6 +1,7 @@
 # Desktop Commander MCP + OpenAI Secure MCP Tunnel
 
-Ansible automation for installing the open-source Desktop Commander MCP on
+Ansible automation for installing the open-source
+[Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) on
 headless Ubuntu 26.04 and running it as a stdio child of the official OpenAI client.
 A single systemd service keeps the server available to the OpenAI backend;
 desktop and mobile devices use ChatGPT. The mobile device does not run or
