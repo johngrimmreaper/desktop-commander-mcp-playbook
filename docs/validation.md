@@ -16,14 +16,21 @@ The Node.js 24.21.0 and OpenAI tunnel-client 0.0.16 pins were kept.
 | Release-only and damaged-bundle regression | PASS, complete pinned release reuse changed=0 |
 | Install idempotence while running | PASS: two replays changed=0, production selector/state/operator config preserved |
 | Upgrade guard with forced mismatched target | PASS: stopped before mutation with failed=1, changed=0, old daemon remains active |
+| Detached production upgrade with systemd-run | PASS: 2026-10-22 22:59 UTC, ok=93 changed=4 failed=0 |
+| Production daemon after upgrade | PASS: v0.3.1 selected, service active and enabled, /readyz=200, official tunnel-client 0.0.16 and Node 24.21.0 |
+| Post-upgrade activation regression | PASS: all fixture activation, unchanged-PID, rollback selection and readiness ownership cases, including fixture cleanup |
+| Post-upgrade native SDK/systemd test | PASS: 25 MCP tools; get_config/list_directory/start_process; cgroup restart and stop; production untouched |
+| Native tool comparison | v0.2.52 exposed 26; v0.3.1 exposes 25. `get_prompts` was removed upstream; the other 25 names are unchanged |
 
 The running upstream MCP changes its own usage statistics in `config.json`.
-The idempotence test now excludes only these mutable counters while still
-comparing operator settings and permissions, avoiding a false positive.
+The idempotence and activation tests now exclude only these mutable counters
+while still comparing operator settings and permissions, avoiding false positives.
 
-The staged release and production activation are separate operations. Production
-activation and the post-upgrade live checks are documented independently below
-once executed; staging alone does not establish tunnel health.
+The upgraded daemon reconnected through the production ChatGPT tunnel, and a
+live MCP tool call reached ubuntu-test-vm after the restart. This verifies the channel
+for the present session, not every future authentication/network condition.
+The old v0.2.52 bundle was retained for rollback. An incomplete, unselected
+v0.3.0 staging directory from the interrupted version investigation was removed.
 
 
 Updated on 2026-10-10. Checks ran directly on ubuntu-test-vm through Remote Desktop

@@ -27,6 +27,11 @@ continues to require SHA integrity and official npm HTTPS URLs for every other
 package. Arbitrary local dependencies are not allowed. Dependency lifecycle
 scripts remain disabled during `npm ci`.
 
+A native SDK tool-name comparison of v0.2.52 and v0.3.1 identified one
+intentional upstream surface change: `get_prompts` is absent in v0.3.1. The
+other 25 MCP tool names are unchanged, including terminal commands, files and
+PDF operations. Our headless launch already disables onboarding.
+
 The Node.js 24.21.0 and OpenAI tunnel-client 0.0.16 pins are unchanged.
 This section supersedes the 2026-10-10 Desktop Commander version investigation
 below, which is retained as historical background only.

@@ -2,6 +2,7 @@
 """Run real post-preflight activation tasks against private, local systemd fixtures."""
 import copy
 import hashlib
+import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
@@ -46,9 +47,20 @@ def production_snapshot():
     paths = [HOME / ".config/desktop-commander-mcp/tunnel.yaml",
              HOME / ".config/desktop-commander-mcp/runtime.key",
              HOME / ".claude-server-commander/config.json"]
-    files = {str(path): (hashlib.sha256(path.read_bytes()).hexdigest(),
-                        path.stat().st_mode, path.stat().st_uid) if path.exists() else None
-             for path in paths}
+    files = {}
+    for path in paths:
+        if not path.exists():
+            files[str(path)] = None
+            continue
+        data = path.read_bytes()
+        if path.name == "config.json":
+            # A live Desktop Commander writes usage counters asynchronously.
+            # Compare its settings and permissions, not those counters.
+            config = json.loads(data)
+            config.pop("usageStats", None)
+            data = json.dumps(config, sort_keys=True).encode()
+        files[str(path)] = (hashlib.sha256(data).hexdigest(),
+                            path.stat().st_mode, path.stat().st_uid)
     current = PREFIX / "current"
     return properties(SERVICE), files, os.readlink(current) if current.is_symlink() else None
 
@@ -69,8 +81,14 @@ def main():
         raise RuntimeError("Run this check as the existing non-root runtime user.")
     run(["sudo", "-n", "true"])
     before = production_snapshot()
-    release = next(path for path in sorted((PREFIX / "releases").iterdir())
-                   if not path.name.startswith(".") and (path / "release.json").is_file())
+    defaults = yaml.safe_load((ROOT / "roles/dcmcp/defaults/main.yml").read_text())
+    release_id = (f"dc-{defaults['dcmcp_desktop_version']}-"
+                  f"{defaults['dcmcp_desktop_revision'][:12]}-"
+                  f"node-{defaults['dcmcp_node_version']}-"
+                  f"tunnel-{defaults['dcmcp_tunnel_version']}-{os.uname().machine}")
+    release = PREFIX / "releases" / release_id
+    if not (release / "release.json").is_file():
+        raise RuntimeError("Target pinned release is not installed")
     manifest = (release / "release.json").read_bytes()
     unit = "dcmcp-activation-test-" + uuid.uuid4().hex + ".service"
     unit_file = Path("/etc/systemd/system") / unit
