@@ -1,0 +1,43 @@
+---
+# An upgrade is never the initial installation/activation path. In particular,
+# fail before the install role modifies any files on an inactive host.
+- name: Validate the host and versioned target before an upgrade
+  ansible.builtin.import_tasks: context.yml
+
+- name: Require the upgrade target to be the release being staged
+  ansible.builtin.assert:
+    that:
+      - dcmcp_target_release == dcmcp_release_id
+    fail_msg: Upgrade must target the pinned new release, not a rollback ID.
+
+- name: Inspect the active versioned release selector
+  ansible.builtin.stat:
+    path: "{{ dcmcp_prefix }}/current"
+    follow: false
+  register: dcmcp_upgrade_current
+
+- name: Refuse upgrades without an existing managed release selector
+  ansible.builtin.assert:
+    that:
+      - dcmcp_upgrade_current.stat.islnk | default(false)
+      - dcmcp_upgrade_current.stat.uid | default(-1) == 0
+      - dcmcp_upgrade_current.stat.lnk_source | default('') is match('^/opt/desktop-commander-mcp/releases/[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')
+    fail_msg: No managed active release; use install/preflight/activate for initial setup.
+
+- name: Inspect the production unit without changing it
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - show
+      - "{{ dcmcp_service }}"
+      - --property=LoadState,ActiveState,UnitFileState
+  register: dcmcp_upgrade_unit
+  changed_when: false
+
+- name: Refuse upgrades of disabled or inactive production daemons
+  ansible.builtin.assert:
+    that:
+      - "'LoadState=loaded' in dcmcp_upgrade_unit.stdout_lines"
+      - "'ActiveState=active' in dcmcp_upgrade_unit.stdout_lines"
+      - "'UnitFileState=enabled' in dcmcp_upgrade_unit.stdout_lines"
+    fail_msg: A live enabled systemd instance is required for an upgrade.

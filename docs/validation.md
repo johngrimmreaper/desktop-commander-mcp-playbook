@@ -1,5 +1,31 @@
 # Native Ubuntu 26.04 validation
 
+## Update validation on 2026-10-22
+
+This update upgrades the pinned Desktop Commander source from 0.2.52
+to **0.3.1**.
+The Node.js 24.21.0 and OpenAI tunnel-client 0.0.16 pins were kept.
+
+| Check | Result |
+| --- | --- |
+| Official v0.3.1 tag and lockfile Git blob | Verified against upstream (`b1c6da69633e597dab119e1173935523a4d4caa8`) |
+| New vendored telemetry-contract allowlist | Matched versioned Git sources, local link and lock metadata; remote packages retain hash/registry verification |
+| Native 0.3.1 install/build | PASS: ok=54 changed=11 failed=0; old 0.2.52 selected and running throughout staging |
+| New candidate preflight | PASS, changed=0; no live service restart |
+| Offline unit tests, Ruff, ansible-lint and playbook syntax | PASS, including new upgrade.yml |
+| Release-only and damaged-bundle regression | PASS, complete pinned release reuse changed=0 |
+| Install idempotence while running | PASS: two replays changed=0, production selector/state/operator config preserved |
+| Upgrade guard with forced mismatched target | PASS: stopped before mutation with failed=1, changed=0, old daemon remains active |
+
+The running upstream MCP changes its own usage statistics in `config.json`.
+The idempotence test now excludes only these mutable counters while still
+comparing operator settings and permissions, avoiding a false positive.
+
+The staged release and production activation are separate operations. Production
+activation and the post-upgrade live checks are documented independently below
+once executed; staging alone does not establish tunnel health.
+
+
 Updated on 2026-10-10. Checks ran directly on ubuntu-test-vm through Remote Desktop
 Commander, using its existing mcp_operator account and sudo. No Docker/container
 executor was used for these results.

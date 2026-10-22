@@ -1,0 +1,26 @@
+---
+- name: Upgrade an existing running Desktop Commander MCP tunnel
+  hosts: mcp_servers
+  become: true
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Refuse first installs and inactive installations
+      ansible.builtin.include_role:
+        name: dcmcp
+        tasks_from: upgrade-guard
+
+    - name: Stage and validate the new immutable release while the old one runs
+      ansible.builtin.include_role:
+        name: dcmcp
+        tasks_from: main
+
+    - name: Validate runtime inputs before any service interruption
+      ansible.builtin.include_role:
+        name: dcmcp
+        tasks_from: preflight
+
+    - name: Atomically activate the upgrade and check managed readiness
+      ansible.builtin.include_role:
+        name: dcmcp
+        tasks_from: activate

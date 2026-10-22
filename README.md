@@ -24,7 +24,7 @@ grant that access.
 | Architecture | x86_64/amd64 or aarch64/arm64, glibc |
 | Runtime user | Existing mcp_operator account and existing sudo; dedicated process HOME |
 | Controller | Ubuntu 26.04, Python 3.14 and ansible-core 2.21.5 |
-| Desktop Commander | 0.2.52 |
+| Desktop Commander | 0.3.1 |
 | Node.js | 24.21.0, installed privately in the versioned release bundle |
 | tunnel-client | 0.0.16, official Linux bundle with a pinned checksum |
 | Lint | ansible-lint 26.9.0; dependencies in requirements-dev.txt |
@@ -86,7 +86,7 @@ sudo apt-get install -y python3-venv
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 cp -n inventory/local.example.yml inventory/hosts.yml
-nano inventory/hosts.yml
+vi inventory/hosts.yml
 .venv/bin/ansible-playbook playbooks/install.yml
 ```
 
@@ -101,9 +101,9 @@ dcmcp_workdir in inventory and create the directory manually.
 
 Installation adds Ubuntu dependencies, downloads Node and tunnel-client with
 SHA-256 verification, retrieves Desktop Commander source at an immutable commit,
-verifies the lockfile's Git blob and uses npm ci --ignore-scripts. The inspected
-lockfile's 1,142 dependency entries have integrity hashes and official registry
-URLs. The explicit build uses the architecture's esbuild binary, already
+verifies the lockfile's Git blob and uses npm ci --ignore-scripts. All remote packages in the reviewed lockfile carry integrity hashes and use the
+official npm registry. The one allowlisted local telemetry contract is verified
+against the pinned Git source and a precise local-link manifest. The explicit build uses the architecture's esbuild binary, already
 verified by npm; it does not use npx, @latest, npm install or setup/remote/
 telemetry scripts.
 
@@ -148,7 +148,7 @@ umask 077
 cp -n /usr/local/share/desktop-commander-mcp/tunnel.yaml.example "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml"
 cp -n /usr/local/share/desktop-commander-mcp/desktop-commander.json.example "/var/lib/desktop-commander-mcp/home/.claude-server-commander/config.json"
 chmod 600 "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml" "/var/lib/desktop-commander-mcp/home/.claude-server-commander/config.json"
-nano "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml"
+vi "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml"
 ```
 
 cp -n preserves existing files; update them manually when configuration already
@@ -324,39 +324,83 @@ enabling it.
 
 ## Upgrades and rollback
 
-1. Update dcmcp_desktop_version/revision/lock_blob, dcmcp_node_version/checksums
-   and dcmcp_tunnel_version/checksums using verified official sources. This
-   implementation supports Node major version 24.
-2. Run install: the active runtime and current selection stay as they were.
-   Every reused bundle is revalidated; a matching release.json alone is not
-   accepted as proof of a complete installation. A damaged bundle fails without
-   being overwritten. Restore a verified bundle while stopped, or stage a new ID.
-3. Read upstream compatibility notes and update the active files manually.
-4. Run preflight and activate. Each complete bundle contains Node, MCP,
-   dependencies and the tunnel, avoiding a mixed-version upgrade.
-5. Check the journal, /readyz, discovery and a real call through the connector.
+The pinned baseline is Desktop Commander **v0.3.1**. Both first-time installs
+and upgrades use the exact upstream Git commit and lockfile, never a floating
+branch, `npx`, `@latest`, or the paid Remote Desktop Commander installer.
+Node 24 and the official OpenAI tunnel-client are bundled in each immutable
+release. Current releases do not require changes to the active tunnel YAML,
+runtime key or Desktop Commander JSON.
 
-Previous releases are retained. To roll back, use an installed bundle's ID and,
-when needed, manually restore compatible configuration:
+### New installation
+
+Run `playbooks/install.yml` as described in section 1. Install *only stages* the
+new release. Create the active files manually (section 2), run
+`playbooks/preflight.yml`, then explicitly run `playbooks/activate.yml`.
+Nothing is auto-activated on a new host.
+
+### Upgrade a running installation
+
+1. Update only the reviewed version/commit/lockfile pins in
+   `roles/dcmcp/defaults/main.yml` when a new upstream release is verified.
+   Keep SHA-256 checks for any changed Node/tunnel binary. Review upstream
+   compatibility changes and the local-dependency allowlist in `release.yml`.
+2. From an **independent SSH/console session**, run:
+
+   ```bash
+   cd ~/Projects/desktop-commander-mcp-ansible
+   .venv/bin/ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml
+   ```
+
+3. This single command refuses inactive/disabled or unconfigured hosts,
+   stages the immutable bundle while production continues running, validates
+   the config/key and candidate, and uses the existing controlled activation
+   to stop the old cgroup, atomically switch `current`, start and check readiness.
+   A subsequent invocation is idempotent if nothing has changed.
+4. Verify `systemctl status desktop-commander-mcp.service`, `/readyz`, the
+   journal, tool discovery and a real command from ChatGPT. The old release is
+   retained for rollback.
+
+**Do not run the upgrade interactively through the exact MCP tunnel being
+restarted.** Service shutdown terminates that terminal session and any child
+Ansible process. Instead use SSH/console or launch the controller in a separate
+systemd transient unit before the restart. This is also true for manual
+`activate.yml` when you are connected through the production tunnel.
+
+To run the upgrade **from an existing Desktop Commander session** when no
+independent SSH session is available, detach the controller from its service
+cgroup by using the script described in `scripts/upgrade-detached.sh`. Its
+transient unit and logs survive the MCP restart:
+
+```bash
+cd ~/Projects/desktop-commander-mcp-ansible
+bash scripts/upgrade-detached.sh
+# After reconnecting, see the unit name printed above:
+sudo journalctl -u dcmcp-upgrade-YYYYMMDDTHHMMSS.service --no-pager -n 100
+```
+
+An activation failure restores the previous release *selector and enablement*
+and stops the daemon to avoid falsely claiming a healthy rollback. Run a manual
+recovery through SSH/console, or use the detached upgrader's automatic recovery
+attempt. Recovery retries `preflight.yml` and `activate.yml` on the prior bundle
+and confirms readiness; it cannot fix invalidated credentials or remote access.
+
+To manually roll back to an installed bundle's ID (restore compatible config
+first, if necessary):
 
 ```bash
 .venv/bin/ansible-playbook playbooks/preflight.yml -e dcmcp_target_release=PREVIOUS_RELEASE_ID
 .venv/bin/ansible-playbook playbooks/activate.yml -e dcmcp_target_release=PREVIOUS_RELEASE_ID
 ```
 
-The same flow stops the old instance before starting the replacement. Do not
-perform simultaneous rollouts for that ID. Reinstalling the baseline does not
-undo a rollback: install does not switch current.
-
 The fingerprint excludes mutable counters/metadata in Desktop Commander's
-JSON. To apply changes only to that JSON with an explicit restart:
+JSON. To force an explicit restart after changing only that JSON:
 
 ```bash
 .venv/bin/ansible-playbook playbooks/activate.yml -e dcmcp_restart=true
 ```
 
 To rotate the key, deactivate, edit runtime.key manually while retaining mode
-0600, run preflight and reactivate. Do not copy secrets into inventory or logs.
+0600, run preflight and reactivate. Never copy secrets into inventory or logs.
 
 ## Deactivation and uninstallation
 

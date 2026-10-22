@@ -2,6 +2,7 @@
 """Explicit install integration check; never activate, create keys, or copy active examples."""
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 import pwd
@@ -21,7 +22,14 @@ def snapshot(paths):
     for path in paths:
         if path.exists():
             info = path.stat()
-            result[str(path)] = (hashlib.sha256(path.read_bytes()).hexdigest(),
+            data = path.read_bytes()
+            if path.name == "config.json":
+                # The running MCP updates its own usage counters asynchronously;
+                # install must preserve operator settings, not freeze those counters.
+                document = json.loads(data)
+                document.pop("usageStats", None)
+                data = json.dumps(document, sort_keys=True).encode()
+            result[str(path)] = (hashlib.sha256(data).hexdigest(),
                                  info.st_mode, info.st_uid, info.st_gid)
         else:
             result[str(path)] = None
