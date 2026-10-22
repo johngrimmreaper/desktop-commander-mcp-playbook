@@ -7,7 +7,7 @@ if ! systemctl is-active --quiet desktop-commander-mcp.service; then
   echo 'Production MCP is inactive. Use install/preflight/activate instead.' >&2
   exit 2
 fi
-sudo -n -v
+sudo -n true
 unit="dcmcp-upgrade-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 sudo -n systemd-run \
   --unit="$unit" \
