@@ -136,8 +136,36 @@
             for key in ("dependencies", "devDependencies", "optionalDependencies"):
                 if pkg.get(key, {}) != lock["packages"][""].get(key, {}):
                     raise SystemExit("Desktop Commander package and lock dependencies differ")
+            # v0.3.0 vendors one linked workspace package, covered by the
+            # immutable Git revision rather than an npm registry integrity hash.
+            # Do not treat general file:, link: or arbitrary local paths as safe.
+            local_dependency = "@desktop-commander/telemetry-contract"
+            local_path = "vendor/telemetry-contract"
+            link_name = "node_modules/" + local_dependency
+            has_local = local_dependency in pkg.get("dependencies", {})
+            if has_local:
+                if pkg["dependencies"][local_dependency] != "file:" + local_path:
+                    raise SystemExit("Unexpected local dependency path")
+                vendor_pkg = json.loads((root / local_path / "package.json").read_text())
+                if vendor_pkg.get("name") != local_dependency:
+                    raise SystemExit("Vendored package name mismatch")
+                if lock["packages"].get(link_name) != {"resolved": local_path, "link": True}:
+                    raise SystemExit("Unexpected vendored dependency link")
+                vendor_lock = lock["packages"].get(local_path, {})
+                if vendor_lock.get("name") != local_dependency or vendor_lock.get("version") != vendor_pkg.get("version"):
+                    raise SystemExit("Vendored package version mismatch")
+                if "integrity" in vendor_lock or "resolved" in vendor_lock:
+                    raise SystemExit("Vendored package must come from pinned Git source")
+                tracked = set(git("ls-files", "--", local_path).splitlines())
+                required = {local_path + "/package.json", local_path + "/transport.js",
+                            local_path + "/transport.d.ts"}
+                if not required <= tracked:
+                    raise SystemExit("Vendored sources missing from pinned Git tree")
+                for item in (root / local_path).rglob("*"):
+                    if item.is_symlink() or (item.is_file() and str(item.relative_to(root)) not in tracked):
+                        raise SystemExit("Unexpected vendored file or symbolic link")
             for name, data in lock["packages"].items():
-                if not name:
+                if not name or (has_local and name in (link_name, local_path)):
                     continue
                 if not re.fullmatch(r"sha(256|384|512)-[A-Za-z0-9+/=]+",
                                     data.get("integrity", "")):

@@ -7,6 +7,30 @@ or other instructions. The ruleset query returned 403 because the feature was
 unavailable on the private repository's plan; the branch was reported as
 unprotected. This does not replace user authorization to update refs/open PRs.
 
+## Release refresh on 2026-10-22
+
+Desktop Commander [v0.3.1](https://github.com/wonderwhy-er/DesktopCommanderMCP/releases/tag/v0.3.1)
+was published on 2026-10-22, following v0.3.0 on 2026-10-13. The release has
+`package-lock.json` Git blob `b1c6da69633e597dab119e1173935523a4d4caa8`.
+The tag's package.json is 0.3.1, but the lockfile's root version remains 0.3.0;
+its dependency maps are equal to package.json. The upstream changelog fixes
+PDF file handle closing, streamed file reads, preview security policy and an
+`unpdf` dependency regression. The earlier 0.3.0 improved path validation,
+process cleanup and search behavior.
+
+The new pinned lockfile has **one** local `file:vendor/telemetry-contract`
+dependency, represented by a linked `node_modules/@desktop-commander/telemetry-contract`
+entry and vendored metadata. These entries intentionally have no npm integrity
+hashes. The release verifier explicitly checks the name, path, version, link,
+and tracked non-symlink source files against the immutable Git checkout. It
+continues to require SHA integrity and official npm HTTPS URLs for every other
+package. Arbitrary local dependencies are not allowed. Dependency lifecycle
+scripts remain disabled during `npm ci`.
+
+The Node.js 24.21.0 and OpenAI tunnel-client 0.0.16 pins are unchanged.
+This section supersedes the 2026-10-10 Desktop Commander version investigation
+below, which is retained as historical background only.
+
 ## Desktop Commander
 
 Latest release inspected: [v0.2.52](https://github.com/wonderwhy-er/DesktopCommanderMCP/releases/tag/v0.2.52).

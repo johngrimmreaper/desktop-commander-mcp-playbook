@@ -14,9 +14,9 @@ dcmcp_runtime_key: "{{ dcmcp_config_dir }}/runtime.key"
 dcmcp_desktop_config: "{{ dcmcp_home }}/.claude-server-commander/config.json"
 
 # Version + source revision are explicit; no @latest, npx or floating branch.
-dcmcp_desktop_version: "0.2.52"
-dcmcp_desktop_revision: c774c3b505de990219637ecdc9a830c8772fae9d
-dcmcp_lock_blob: 5aa49fbc9b44e6506d79b1481d608ff819fd7fc7
+dcmcp_desktop_version: "0.3.1"
+dcmcp_desktop_revision: 7251da501d760e6eb5f95d802d9b42c741190950
+dcmcp_lock_blob: b1c6da69633e597dab119e1173935523a4d4caa8
 dcmcp_node_version: "24.21.0"
 dcmcp_tunnel_version: "0.0.16"
 # SHA-256 values obtained from primary sources; see docs/upstream.md.

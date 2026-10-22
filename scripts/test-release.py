@@ -32,8 +32,14 @@ def main():
     if account.pw_uid == 0:
         raise RuntimeError("Run this check as the existing non-root runtime user.")
     run(["sudo", "-n", "true"])
-    release = next(path for path in sorted((PREFIX / "releases").iterdir())
-                   if not path.name.startswith(".") and (path / "release.json").is_file())
+    defaults = yaml.safe_load((ROOT / "roles/dcmcp/defaults/main.yml").read_text())
+    release_id = (f"dc-{defaults['dcmcp_desktop_version']}-"
+                  f"{defaults['dcmcp_desktop_revision'][:12]}-"
+                  f"node-{defaults['dcmcp_node_version']}-"
+                  f"tunnel-{defaults['dcmcp_tunnel_version']}-{os.uname().machine}")
+    release = PREFIX / "releases" / release_id
+    if not (release / "release.json").is_file():
+        raise RuntimeError(f"The target pinned release is not staged: {release_id}")
     manifest_bytes = (release / "release.json").read_bytes()
     manifest = json.loads(manifest_bytes)
     damaged = PREFIX / "releases" / ("dcmcp-release-test-" + uuid.uuid4().hex)
