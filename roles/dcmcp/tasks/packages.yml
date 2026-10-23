@@ -1,0 +1,98 @@
+---
+# Never add third-party repositories, override subscription settings or disable
+# SELinux. Every package comes from the operator's enabled trusted repositories.
+- name: Install Ubuntu dependencies from configured authenticated APT repositories
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - git
+      - xz-utils
+      - unzip
+      - python3
+      - python3-yaml
+      - ripgrep
+      - debianutils
+      - build-essential
+      - libatomic1
+    state: present
+    update_cache: true
+    cache_valid_time: 86400
+  when: ansible_facts['distribution'] == 'Ubuntu'
+
+- name: Check whether RHEL already has the ripgrep RPM
+  ansible.builtin.command:
+    argv: [/usr/bin/rpm, -q, ripgrep]
+  register: dcmcp_rhel_ripgrep_installed
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['distribution'] == 'RedHat'
+
+- name: Check RHEL enabled repositories for ripgrep without changing repo settings
+  ansible.builtin.command:
+    argv: [/usr/bin/dnf, -q, list, --available, ripgrep]
+  register: dcmcp_rhel_ripgrep_available
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['distribution'] == 'RedHat'
+    - dcmcp_rhel_ripgrep_installed.rc != 0
+
+- name: Require RHEL ripgrep to be installed or available from enabled repositories
+  ansible.builtin.assert:
+    that:
+      - >-
+        dcmcp_rhel_ripgrep_installed.rc == 0 or
+        dcmcp_rhel_ripgrep_available.rc | default(1) == 0
+    fail_msg: >-
+      RHEL 10 needs the ripgrep RPM. Make ripgrep available in a trusted,
+      enabled repository (for example RHEL Extensions or EPEL 10) before
+      running installation; repository enrollment is deliberately manual.
+  when: ansible_facts['distribution'] == 'RedHat'
+
+- name: Install RHEL 10 dependencies from operator-enabled DNF repositories
+  ansible.builtin.dnf:
+    name:
+      - ca-certificates
+      - git
+      - xz
+      - unzip
+      - python3
+      - python3-pyyaml
+      - ripgrep
+      - gcc
+      - gcc-c++
+      - make
+      - libatomic
+      - policycoreutils
+      - libselinux-utils
+      - python3-libselinux
+    state: present
+    use_backend: dnf4
+  when: ansible_facts['distribution'] == 'RedHat'
+
+- name: Install Fedora dependencies with the native DNF5 backend
+  ansible.builtin.dnf5:
+    name:
+      - ca-certificates
+      - git
+      - xz
+      - unzip
+      - python3
+      - python3-pyyaml
+      - ripgrep
+      - gcc
+      - gcc-c++
+      - make
+      - libatomic
+      - policycoreutils
+      - libselinux-utils
+      - python3-libselinux
+    state: present
+  when: ansible_facts['distribution'] == 'Fedora'
+
+- name: Read SELinux enforcement mode using the target OS, not cached Ansible facts
+  ansible.builtin.command:
+    argv: [/usr/bin/env, getenforce]
+  register: dcmcp_selinux_mode
+  changed_when: false
+  when: ansible_facts['distribution'] in ['RedHat', 'Fedora']

@@ -10,11 +10,13 @@
       untracked inventory/hosts.yml before running any playbook.
       No default or automatic account selection is allowed.
 
-- name: Require the supported native Ubuntu systemd baseline
+- name: Require the supported native Linux systemd baseline
   ansible.builtin.assert:
     that:
-      - ansible_facts['distribution'] == 'Ubuntu'
-      - ansible_facts['distribution_version'] == '26.04'
+      - >-
+        (ansible_facts['distribution'] == 'Ubuntu' and ansible_facts['distribution_version'] == '26.04')
+        or (ansible_facts['distribution'] == 'RedHat' and ansible_facts['distribution_major_version'] == '10')
+        or (ansible_facts['distribution'] == 'Fedora' and ansible_facts['distribution_major_version'] in ['43', '44'])
       - ansible_facts['architecture'] in ['x86_64', 'aarch64']
       - ansible_facts['service_mgr'] == 'systemd'
       - ansible_facts.get('virtualization_tech_guest', []) | intersect(['container']) | length == 0
@@ -27,8 +29,9 @@
       - dcmcp_helpers == '/usr/local/libexec/desktop-commander-mcp'
       - dcmcp_service == 'desktop-commander-mcp.service'
     fail_msg: >-
-      The only supported target is native Ubuntu 26.04, amd64/arm64, with systemd.
-      Use --syntax-check for a read-only check; --check is not a staged install.
+      Supported native hosts: Ubuntu 26.04, RHEL 10, and Fedora 43/44,
+      amd64/arm64 with systemd. RHEL/Fedora are provisionally supported until
+      integration-tested on those systems. No containers or check-mode installs.
 
 # Facts are useful hints, but container technologies are not a closed set.
 # Check the target itself before any account lookup or installation mutation.

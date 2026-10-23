@@ -19,7 +19,7 @@ Environment=NODE_ENV=production
 UMask=0077
 RuntimeDirectory=desktop-commander-mcp
 RuntimeDirectoryMode=0700
-ExecStart={{ dcmcp_helpers }}/run
+ExecStart={% if ansible_facts['distribution'] in ['RedHat', 'Fedora'] %}/usr/bin/python3 {% endif %}{{ dcmcp_helpers }}/run
 Restart=always
 RestartSec=10
 RestartPreventExitStatus=78

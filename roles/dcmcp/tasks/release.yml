@@ -312,6 +312,22 @@
         creates: "{{ dcmcp_release_path }}/release.json"
       changed_when: true
 
+# On SELinux hosts apply the vendor policy's default contexts, honoring any
+# administrator-managed persistent fcontext rules. Never disable enforcement.
+- name: Apply SELinux default labels to the versioned release on RPM systems
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - restorecon
+      - -R
+      - -v
+      - "{{ dcmcp_release_path }}"
+  register: dcmcp_release_relabel
+  changed_when: dcmcp_release_relabel.stdout | length > 0
+  when:
+    - ansible_facts['distribution'] in ['RedHat', 'Fedora']
+    - dcmcp_selinux_mode.stdout in ['Enforcing', 'Permissive']
+
 # A matching completion manifest is not proof that its artifacts still exist.
 # Use the current controller helper even before the installed helper is updated.
 - name: Validate the immutable bundle before accepting a new or reused release

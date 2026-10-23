@@ -52,22 +52,8 @@
       - "{{ dcmcp_home }}"
   changed_when: false
 
-- name: Install OS dependencies from Ubuntu's authenticated package repositories
-  ansible.builtin.apt:
-    name:
-      - ca-certificates
-      - git
-      - xz-utils
-      - unzip
-      - python3
-      - python3-yaml
-      - ripgrep
-      - debianutils
-      - build-essential
-      - libatomic1
-    state: present
-    update_cache: true
-    cache_valid_time: 86400
+- name: Install distribution-specific OS dependencies
+  ansible.builtin.import_tasks: packages.yml
 
 - name: Create root-owned installation paths
   ansible.builtin.file:
@@ -200,6 +186,24 @@
     group: root
     mode: "0644"
   notify: Reload systemd
+
+# Apply the host's standard SELinux contexts to managed helpers and unit.
+# This never adds policy rules, modifies arbitrary files or disables SELinux.
+- name: Restore SELinux contexts of generated helpers and service definition
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - restorecon
+      - -R
+      - -v
+      - "{{ dcmcp_helpers }}"
+      - "{{ dcmcp_examples }}"
+      - "/etc/systemd/system/{{ dcmcp_service }}"
+  register: dcmcp_helpers_relabel
+  changed_when: dcmcp_helpers_relabel.stdout | length > 0
+  when:
+    - ansible_facts['distribution'] in ['RedHat', 'Fedora']
+    - dcmcp_selinux_mode.stdout in ['Enforcing', 'Permissive']
 
 - name: Flush the unit reload only
   ansible.builtin.meta: flush_handlers
