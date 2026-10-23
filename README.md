@@ -100,6 +100,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 cp -n inventory/local.example.yml inventory/hosts.yml
 vi inventory/hosts.yml    # REQUIRED: replace the dcmcp_user placeholder
+.venv/bin/python scripts/validate-inventory.py  # Fail early on malformed YAML/zero hosts
 .venv/bin/ansible-playbook playbooks/install.yml
 ```
 
