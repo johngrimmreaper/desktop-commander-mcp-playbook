@@ -42,7 +42,10 @@ class MonitoringTests(unittest.TestCase):
             module = task.get('ansible.builtin.systemd_service', {})
             self.assertNotEqual(module.get('state'), 'restarted')
             if module.get('state') in ('started', 'stopped'):
-                self.assertEqual(module.get('name'), 'desktop-commander-mcp-health.timer')
+                self.assertIn(module.get('name'), ('desktop-commander-mcp-health.timer',
+                                                  'desktop-commander-mcp-health.service'))
+                if module.get('state') == 'started':
+                    self.assertEqual(module.get('name'), 'desktop-commander-mcp-health.timer')
         self.assertIn('monitor-disable.yml', (ROLE / 'tasks/uninstall.yml').read_text())
 
     def test_monitor_is_opt_in_not_part_of_install_or_activate(self):

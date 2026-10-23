@@ -14,6 +14,17 @@
     enabled: false
   when: dcmcp_monitor_timer.stat.exists
 
+- name: Check for a remaining passive health-check service
+  ansible.builtin.stat:
+    path: /etc/systemd/system/desktop-commander-mcp-health.service
+  register: dcmcp_monitor_service
+
+- name: Stop any in-flight passive health-check oneshot before removing its helper
+  ansible.builtin.systemd_service:
+    name: desktop-commander-mcp-health.service
+    state: stopped
+  when: dcmcp_monitor_service.stat.exists
+
 - name: Remove only passive monitoring service, timer and helper
   ansible.builtin.file:
     path: "{{ item }}"
