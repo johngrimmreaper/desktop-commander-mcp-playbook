@@ -4,13 +4,17 @@
 
 On RHEL 10.2, the independent `.venv/bin/python scripts/check.py` runner
 completed with no shell activation, and the synthetic host-facts integration
-suite passed all **24** positive/negative cases on a native RHEL 10 host.
+suite passed all **26** positive/negative cases on a native RHEL 10 host.
 The non-destructive `scripts/doctor.py --json` returned `healthy: true` with
 systemd, release, runtime user, private config, loopback health, readiness,
 MCP child and SELinux Enforcing checks all positive. The detached upgrade
 refactor is validated by static/unit tests only; no RHEL live upgrade was
 attempted.
-The existing production systemd service was not restarted or upgraded.
+A separate harmless root-owned transient systemd test unit validated
+`systemd-run --wait --pipe --collect` with `TRANSIENT_UID=0`, `HOME=/root`,
+and the expected working directory; it exited successfully without calling
+any Ansible upgrade playbook. The existing production systemd service was
+not restarted or upgraded.
 
 ## Native RHEL 10.2 integration and live ChatGPT verification (2026-10-23)
 
