@@ -568,6 +568,41 @@ listener, without redirects or proxies. Its exit code is 0 when the runtime
 checks pass and 1 if unhealthy. This is a local health check, not proof that
 ChatGPT is able to invoke every tool through the OpenAI control plane.
 
+## Optional passive health monitoring
+
+The production service is **not** restarted or changed to install monitoring.
+Monitoring is disabled by default; the operator must explicitly opt in after
+installation and activation:
+
+```bash
+.venv/bin/ansible-playbook playbooks/monitor-enable.yml --ask-become-pass
+systemctl list-timers desktop-commander-mcp-health.timer
+journalctl -u desktop-commander-mcp-health.service -n 30 --no-pager
+```
+
+A separate systemd timer checks the managed daemon about every five minutes
+(after a short boot delay). It uses the **same existing Linux runtime user**,
+reads the local private files, and calls the root-owned installed readiness
+checker to confirm that `/readyz` actually belongs to the running managed
+process. A failed check causes an unsuccessful **monitoring oneshot** and
+appears in the journal, without leaking keys or config, and without restarting
+the MCP service or interrupting active tools. The system journal's retention
+policy still applies; this project provides no external alerts or email.
+
+To disable **and remove** the optional timer, service and installed monitoring
+helper without affecting the production daemon:
+
+```bash
+.venv/bin/ansible-playbook playbooks/monitor-disable.yml --ask-become-pass
+```
+
+The normal uninstall playbook removes optional monitoring before removing the
+MCP files. Monitoring is deliberately not installed or enabled automatically
+by `install.yml`, `activate.yml` or `upgrade.yml`. On host types without SELinux,
+no SELinux setting is changed. On RHEL/Fedora, normal labels are restored only
+to the new managed files. Verify the first timer results before relying on its
+journald statuses; no automatic recovery action is attached to this timer.
+
 
 
 ## Native validation on Ubuntu 26.04

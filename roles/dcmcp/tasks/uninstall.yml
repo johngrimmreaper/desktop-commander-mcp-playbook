@@ -1,4 +1,7 @@
 ---
+- name: Stop and remove optional passive monitoring before removing helpers
+  ansible.builtin.import_tasks: monitor-disable.yml
+
 - name: Stop and disable the managed runtime
   ansible.builtin.import_tasks: deactivate.yml
 

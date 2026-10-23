@@ -1,0 +1,78 @@
+---
+- name: Validate runtime account and native host for monitoring
+  ansible.builtin.import_tasks: context.yml
+
+- name: Require the original installed launcher and root-owned readiness helper
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ dcmcp_helpers }}/readiness.py"
+    - "/etc/systemd/system/{{ dcmcp_service }}"
+  register: dcmcp_monitor_prerequisites
+
+- name: Refuse monitoring before the main release has been installed
+  ansible.builtin.assert:
+    that:
+      - item.stat.isreg | default(false)
+      - item.stat.uid | default(-1) == 0
+    fail_msg: Install and activate the managed MCP before enabling monitoring.
+  loop: "{{ dcmcp_monitor_prerequisites.results }}"
+
+- name: Verify the production MCP is active without changing it
+  ansible.builtin.command:
+    argv: [/usr/bin/systemctl, is-active, --quiet, "{{ dcmcp_service }}"]
+  changed_when: false
+
+- name: Install the read-only doctor outside the user's repository
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../scripts/doctor.py"
+    dest: "{{ dcmcp_helpers }}/doctor.py"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the passive health-check service
+  ansible.builtin.template:
+    src: desktop-commander-mcp-health.service.j2
+    dest: /etc/systemd/system/desktop-commander-mcp-health.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the passive health-check timer
+  ansible.builtin.template:
+    src: desktop-commander-mcp-health.timer.j2
+    dest: /etc/systemd/system/desktop-commander-mcp-health.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Detect SELinux mode for monitoring files on RPM targets
+  ansible.builtin.command:
+    argv: [/usr/sbin/getenforce]
+  register: dcmcp_monitor_selinux
+  changed_when: false
+  when: ansible_facts['distribution'] in ['RedHat', 'Fedora']
+
+- name: Restore standard SELinux contexts on monitoring files
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - restorecon
+      - -v
+      - "{{ dcmcp_helpers }}/doctor.py"
+      - /etc/systemd/system/desktop-commander-mcp-health.service
+      - /etc/systemd/system/desktop-commander-mcp-health.timer
+  register: dcmcp_monitor_relabel
+  changed_when: dcmcp_monitor_relabel.stdout | length > 0
+  when:
+    - ansible_facts['distribution'] in ['RedHat', 'Fedora']
+    - dcmcp_monitor_selinux.stdout in ['Enforcing', 'Permissive']
+
+- name: Enable and start only the passive monitoring timer
+  ansible.builtin.systemd_service:
+    name: desktop-commander-mcp-health.timer
+    daemon_reload: true
+    enabled: true
+    state: started

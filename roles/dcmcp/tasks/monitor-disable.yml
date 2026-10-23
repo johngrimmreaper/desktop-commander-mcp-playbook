@@ -1,0 +1,28 @@
+---
+- name: Require an explicitly selected user and supported host before monitoring changes
+  ansible.builtin.import_tasks: context.yml
+
+- name: Check whether passive monitoring exists
+  ansible.builtin.stat:
+    path: /etc/systemd/system/desktop-commander-mcp-health.timer
+  register: dcmcp_monitor_timer
+
+- name: Stop and disable the passive monitoring timer if installed
+  ansible.builtin.systemd_service:
+    name: desktop-commander-mcp-health.timer
+    state: stopped
+    enabled: false
+  when: dcmcp_monitor_timer.stat.exists
+
+- name: Remove only passive monitoring service, timer and helper
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/desktop-commander-mcp-health.timer
+    - /etc/systemd/system/desktop-commander-mcp-health.service
+    - "{{ dcmcp_helpers }}/doctor.py"
+
+- name: Reload systemd after monitoring removal
+  ansible.builtin.systemd_service:
+    daemon_reload: true

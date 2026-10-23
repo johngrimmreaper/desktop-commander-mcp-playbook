@@ -1,0 +1,11 @@
+---
+- name: Explicitly enable passive MCP health checks
+  hosts: mcp_servers
+  become: true
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Enable periodic read-only monitoring
+      ansible.builtin.include_role:
+        name: dcmcp
+        tasks_from: monitor-enable

@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic read-only Desktop Commander MCP health checks
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=1min
+Persistent=false
+Unit=desktop-commander-mcp-health.service
+
+[Install]
+WantedBy=timers.target
