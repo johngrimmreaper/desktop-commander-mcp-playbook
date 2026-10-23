@@ -6,14 +6,14 @@ import sys
 
 import yaml
 
+from inventory_yaml import load_inventory
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def valid_inventory(source):
-    if "\t" in source:
-        return False
     try:
-        doc = yaml.safe_load(source)
+        doc = load_inventory(source)
         hosts = doc["all"]["children"]["mcp_servers"]["hosts"]
         if not isinstance(hosts, dict) or not hosts:
             return False

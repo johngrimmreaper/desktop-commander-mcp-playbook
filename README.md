@@ -118,6 +118,18 @@ all:
           dcmcp_user: alice  # REPLACE with an existing non-root Linux user
 ```
 
+For both standard and detached upgrade operations, use the included
+validators to reject duplicate YAML keys, aliases, merges, tabs, oversized
+inventories and missing runtime-account selection. The detached upgrade
+validator additionally refuses SSH/remote inventories. These are **explicit
+operator preflight commands**, not a replacement for Ansible's own inventory
+parser:
+
+```bash
+.venv/bin/python scripts/validate-inventory.py
+.venv/bin/python scripts/validate-local-inventory.py inventory/hosts.yml  # detached local only
+```
+
 The committed inventory templates contain an **already space-indented**
 `dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT` line immediately below the
 connection settings. Replace the placeholder with your actual existing Linux

@@ -1,13 +1,18 @@
 """Detached upgrades use a root transient unit, never password files or remote SSH."""
 from pathlib import Path
 import importlib.util
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/validate-local-inventory.py"
 loader = importlib.util.spec_from_file_location("local_inventory_validator", SCRIPT)
 module = importlib.util.module_from_spec(loader)
-loader.loader.exec_module(module)
+sys.path.insert(0, str(ROOT / 'scripts'))
+try:
+    loader.loader.exec_module(module)
+finally:
+    sys.path.remove(str(ROOT / 'scripts'))
 
 
 class DetachedUpgradeTests(unittest.TestCase):
@@ -28,7 +33,10 @@ class DetachedUpgradeTests(unittest.TestCase):
                         good.replace('mcp_operator', 'REPLACE_WITH_EXISTING_LINUX_ACCOUNT'),
                         good.replace('        localhost:', '        localhost:\n          ansible_host: example.net'),
                         good.replace('  children:', '  vars:\n    key: value\n  children:'),
-                        'not: yaml: valid:'):
+                        'not: yaml: valid:',
+                        good + 'all: {children: {mcp_servers: {hosts: {localhost: {dcmcp_user: root}}}}}\n',
+                        good.replace('          dcmcp_user: mcp_operator', '          dcmcp_user: mcp_operator\n          dcmcp_user: root'),
+                        good.replace('dcmcp_user: mcp_operator', 'dcmcp_user: &identity mcp_operator\n          ansible_user: *identity')):
             with self.subTest(invalid=invalid):
                 self.assertFalse(module.is_local_only_inventory(invalid))
 

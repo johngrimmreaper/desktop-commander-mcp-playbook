@@ -7,10 +7,12 @@ import sys
 
 import yaml
 
+from inventory_yaml import load_inventory
+
 
 def is_local_only_inventory(source):
     try:
-        doc = yaml.safe_load(source)
+        doc = load_inventory(source)
         if not isinstance(doc, dict) or set(doc) != {"all"}:
             return False
         all_group = doc["all"]
