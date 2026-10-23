@@ -566,6 +566,8 @@ listener, without redirects or proxies. Its exit code is 0 when the runtime
 checks pass and 1 if unhealthy. This is a local health check, not proof that
 ChatGPT is able to invoke every tool through the OpenAI control plane.
 
+
+
 ## Native validation on Ubuntu 26.04
 
 The offline check runner uses the tools installed alongside its Python interpreter,
