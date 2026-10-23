@@ -532,11 +532,20 @@ Disposal of preserved private files remains an operator's manual decision.
 
 ## Native validation on Ubuntu 26.04
 
-Run checks directly in the Ubuntu 26.04 VM or physical host:
+The offline check runner uses the tools installed alongside its Python interpreter,
+so shell activation is **not** required. Run it directly in the repository:
+
+```bash
+.venv/bin/python scripts/check.py
+```
+
+If a required tool is absent from that virtual environment, the runner fails
+with an actionable error rather than accidentally using a system-wide tool.
+For the additional native Ubuntu 26.04 checks (some modify the host), activate
+the virtual environment first:
 
 ```bash
 source .venv/bin/activate
-python scripts/check.py
 python scripts/test-ansible-guards.py
 python scripts/test-idempotence.py --local
 python scripts/test-release.py
@@ -545,7 +554,7 @@ python scripts/test-installed.py --local
 ```
 
 check.py runs positive/negative preflight and readiness tests, ruff, ansible-lint
-and syntax checks for all five playbooks. Unit tests use fixtures and simulated
+and syntax checks for all six playbooks. Unit tests use fixtures and simulated
 dependency/process probes. They do not deploy or contact OpenAI.
 
 test-ansible-guards.py executes the real early role guard with positive native
