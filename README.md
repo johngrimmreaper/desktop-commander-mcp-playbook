@@ -559,8 +559,10 @@ and syntax checks for all six playbooks. Unit tests use fixtures and simulated
 dependency/process probes. They do not deploy or contact OpenAI.
 
 test-ansible-guards.py executes the real early role guard with positive native
-facts and negative container/unsupported-release/detector results. Synthetic
-facts model the rejected systems; all execution stays on Ubuntu 26.04.
+facts and negative container/unsupported-release/detector results. It may run
+on native Ubuntu 26.04, RHEL 10 and Fedora 43/44 (synthetic facts only, no
+installation); the destructive integration scripts remain Ubuntu-only until
+ported and verified separately.
 
 **test-idempotence.py performs a real installation on this host.** Run it only
 on the development/server host you intend to modify, as an existing user with

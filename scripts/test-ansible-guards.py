@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise Linux distro/systemd host guards with synthetic facts on Ubuntu."""
+"""Exercise distro/systemd host guards with synthetic facts on native supported Linux."""
 import copy
 import os
 import pwd
@@ -9,13 +9,14 @@ import tempfile
 
 import yaml
 
+from check import tool_executable
 from host import require_native_host
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    require_native_host()
+    require_native_host(allow_rpm=True)
     source = yaml.safe_load((ROOT / "roles/dcmcp/tasks/context.yml").read_text())
     # Test the actual early guard without reaching account or deployment tasks.
     boundary = next(i for i, task in enumerate(source)
@@ -83,7 +84,7 @@ def main():
                      "gather_facts": False, "vars": settings, "tasks": task_list}]
             path = Path(temporary) / f"case-{index}.yml"
             path.write_text(yaml.safe_dump(play, sort_keys=False))
-            result = subprocess.run(["ansible-playbook", "-i", "localhost,", "-c", "local",
+            result = subprocess.run([tool_executable("ansible-playbook"), "-i", "localhost,", "-c", "local",
                                      str(path)], cwd=ROOT, env=env, capture_output=True,
                                     text=True, timeout=60, check=False)
             output = result.stdout + result.stderr
