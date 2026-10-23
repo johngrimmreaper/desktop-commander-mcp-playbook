@@ -26,7 +26,7 @@ grant that access.
 | Host | Native Ubuntu 26.04 LTS, RHEL 10 or Fedora 43/44; systemd, VM or physical host |
 | Architecture | x86_64/amd64 or aarch64/arm64, glibc |
 | Runtime user | **Required manual `dcmcp_user` in untracked inventory; no default or automatic selection** |
-| Controller | Validated Ubuntu 26.04, Python 3.14, ansible-core 2.21.5; supports SSH targeting RHEL/Fedora |
+| Controller | Validated locally on Ubuntu 26.04 (Python 3.14) and RHEL 10.2 (Python 3.12), ansible-core 2.21.5; SSH targeting is supported |
 | Desktop Commander | 0.3.1 |
 | Node.js | 24.21.0, installed privately in the versioned release bundle |
 | tunnel-client | 0.0.16, official Linux bundle with a pinned checksum |
@@ -43,10 +43,11 @@ authentication requirements follow the host's sudo configuration.
 
 The host guard rejects unsupported distribution releases, container targets
 and architectures before installing anything. Native Ubuntu 26.04 on x86_64
-has been integration-tested on an Ubuntu test VM; **RHEL 10 and Fedora 43/44 have only
-undergone source-level, Ansible-syntax and synthetic host-fact checks**.
-Do not treat the RPM distributions as production-validated until the native
-integration and SELinux-enforcing tests are completed. arm64 is also untested.
+has been integration-tested on an Ubuntu test VM. **RHEL 10.2 x86_64 was installed,
+preflighted, activated and verified end-to-end through ChatGPT on a native VM
+with SELinux Enforcing (2026-10-23).** Fedora 43/44 and arm64 have not had
+native end-to-end validation. These results are host-specific, not blanket
+production certification.
 See [validation status](docs/validation.md).
 
 ## How it works
@@ -145,7 +146,7 @@ This feature selects the Linux runtime user only. **The current tunnel backend
 is still the OpenAI Secure MCP Tunnel**; support for other AI tunnel protocols
 would be a separate feature.
 
-### RHEL 10 / Fedora 43-44 setup (provisional)
+### RHEL 10 / Fedora 43-44 setup (RHEL 10.2 x86_64 validated; Fedora provisional)
 
 Use an existing Ansible controller (an Ubuntu test VM is suitable) with an
 SSH connection to the target; a pre-existing tunnel on the destination is

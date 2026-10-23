@@ -1,6 +1,36 @@
 # Deployment validation
 
-## Provisional RHEL 10 / Fedora 43-44 support (2026-10-23)
+## Native RHEL 10.2 integration and live ChatGPT verification (2026-10-23)
+
+**Validated on one native x86_64 RHEL 10.2 (Coughlan) KVM VM with
+SELinux `Enforcing`.** A local Ansible 2.21.5 controller running under existing
+non-root `mcp_operator` installed and activated the pinned release. The required
+RPMs were resolved from pre-enabled repositories, including `ripgrep`.
+The machine and repositories were provisioned separately; this test does not
+show that fresh unregistered RHEL hosts have those dependencies available.
+
+| Check | Observed result |
+| --- | --- |
+| Inventory/facts | `RedHat`, major 10, version 10.2; local inventory parsed correctly |
+| Offline checks | 41 unit tests, Ruff, ansible-lint and six playbook syntax checks passed before installation |
+| First install | `ok=63 changed=25 failed=0` |
+| Second install | `ok=44 changed=0 failed=0`; release reused without rebuilding |
+| Offline preflight | `ok=13 changed=0 failed=0` |
+| Activation | `ok=29 changed=3 failed=0` and managed readiness succeeded |
+| systemd/SELinux | Service active, enabled; `getenforce` returned `Enforcing` |
+| HTTP health | `http://127.0.0.1:8787/readyz` returned `ready` |
+| OpenAI control plane | Tunnel metadata fetched and tunnel-client started successfully |
+| ChatGPT live MCP call | `get_config` and `start_process` succeeded via the configured MCP connector |
+| Live command results | `/etc/redhat-release` reported RHEL 10.2; `getenforce` reported `Enforcing`; service `active`; readiness `ready` |
+
+No active credentials were added to Git, and the live plugin verification was
+read-only. Installation, activation, and actual ChatGPT MCP execution are now
+proven for **this RHEL 10.2 host**. We have **not** run the complete Ubuntu-only
+native destructive regression suite on RHEL, nor tested Fedora, arm64, RHEL
+fresh-subscription setup, reboot persistence or a live RHEL upgrade/rollback.
+Do not extrapolate this result to every RHEL configuration.
+
+## Initial provisional RPM implementation (historical, before native verification)
 
 The Ansible role now selects APT on Ubuntu 26.04, DNF4 on RHEL 10, and DNF5
 on Fedora 43/44. RPM dependency names are explicitly listed rather than
@@ -10,13 +40,13 @@ EPEL configuration or SELinux policy are changed automatically. The role
 uses the system Python as the systemd entrypoint for RPM systems and applies
 standard SELinux file contexts to managed files when SELinux is enabled.
 
-**These RPM targets are not yet fully validated.** No RHEL or Fedora VM was
-available during this change. Successful synthetic fact, source, lint and
+**At the time of this initial implementation, neither RPM target had been validated.**
+No RHEL or Fedora VM was available during that earlier change. Successful synthetic fact, source, lint and
 syntax checks **do not demonstrate that installation, DNF operations, native
 Node dependencies, SELinux Enforcing activation or tunnel connectivity work
 on real RHEL/Fedora machines**. Actual integration requires authorized VM
-access and will be reported separately. Ubuntu 26.04 is the only system
-with proven end-to-end installation and MCP/systemd tests so far.
+access; subsequent RHEL 10.2 native results are now recorded above. At the time,
+Ubuntu 26.04 was the only system with end-to-end MCP/systemd tests.
 
 On an Ubuntu test VM the synthetic Ansible guard accepted RHEL 10.0/10.1 and Fedora
 43/44, and rejected RHEL 9, Debian 13, Fedora 45 beta, Ubuntu 24.04 and
@@ -35,13 +65,14 @@ Ubuntu's stable production service was not restarted while adding RPM support.
 
 The installation no longer defaults to the `mcp_operator` account. Operators must
 manually set `dcmcp_user` in the Git-ignored `inventory/hosts.yml`; distributed
-examples contain commented placeholders only. The runtime-user guard is the
+examples originally contained commented placeholders (the current examples now
+contain a space-indented placeholder value). The runtime-user guard is the
 first task in the common `context.yml`, before user lookups or installation
 mutations. The standalone Python preflight CLI also requires `--user`.
 
 | Check | Result |
 | --- | --- |
-| No defaults/example inventory user | PASS: parsed YAML excludes `dcmcp_user` |
+| No defaults/example inventory user | PASS at the time: templates then omitted the live key; current templates provide an explicit placeholder, never a usable runtime identity |
 | Missing, empty, invalid runtime account | PASS: native Ansible guard refuses them with changed=0 and explicit instruction |
 | Missing user in real install.yml execution | PASS: failed=1 changed=0, production MCP remains running |
 | Missing user in real uninstall.yml execution | PASS: failed=1 changed=0, existing service and release selector untouched |
@@ -164,7 +195,7 @@ as the existing runtime user with its existing sudo rights:
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
-PATH="$PWD/.venv/bin:$PATH" .venv/bin/python scripts/check.py
+.venv/bin/python scripts/check.py
 PATH="$PWD/.venv/bin:$PATH" .venv/bin/python scripts/test-ansible-guards.py
 PATH="$PWD/.venv/bin:$PATH" .venv/bin/python scripts/test-idempotence.py --local
 PATH="$PWD/.venv/bin:$PATH" .venv/bin/python scripts/test-release.py
