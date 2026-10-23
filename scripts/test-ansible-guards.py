@@ -2,6 +2,7 @@
 """Exercise the real Ansible host guard on native Ubuntu 26.04 with synthetic facts."""
 import copy
 import os
+import pwd
 from pathlib import Path
 import subprocess
 import tempfile
@@ -23,7 +24,7 @@ def main():
     facts = {"distribution": "Ubuntu", "distribution_version": "26.04",
              "architecture": os.uname().machine, "service_mgr": "systemd",
              "virtualization_type": "kvm", "virtualization_tech_guest": ["kvm"]}
-    variables = {"ansible_facts": facts, "dcmcp_user": "mcp_operator",
+    variables = {"ansible_facts": facts, "dcmcp_user": pwd.getpwuid(os.geteuid()).pw_name,
                  "dcmcp_home": "/var/lib/desktop-commander-mcp/home",
                  "dcmcp_prefix": "/opt/desktop-commander-mcp",
                  "dcmcp_helpers": "/usr/local/libexec/desktop-commander-mcp",
@@ -34,6 +35,11 @@ def main():
              ("Ubuntu 24.04", {"distribution_version": "24.04"}, None, False),
              ("unknown container", {"virtualization_type": "future-container",
                                     "virtualization_tech_guest": ["container"]}, None, False)]
+    cases.extend([
+        ("missing runtime account", {}, None, False),
+        ("empty runtime account", {}, None, False),
+        ("invalid runtime account", {}, None, False),
+    ])
     for technology in ("docker", "podman", "container", "lxc", "lxd",
                        "containerd", "systemd-nspawn", "openvz"):
         cases.append((technology, {"virtualization_type": technology}, None, False))
@@ -47,6 +53,12 @@ def main():
             task_list = copy.deepcopy(guard)
             settings = copy.deepcopy(variables)
             settings["ansible_facts"].update(updates)
+            if label == "missing runtime account":
+                settings.pop("dcmcp_user")
+            elif label == "empty runtime account":
+                settings["dcmcp_user"] = ""
+            elif label == "invalid runtime account":
+                settings["dcmcp_user"] = "ROOT!"
             if detector_status is not None:
                 detector = next(task for task in task_list
                                 if task.get("register") == "dcmcp_container_probe")
@@ -62,6 +74,8 @@ def main():
             output = result.stdout + result.stderr
             if (result.returncode == 0) != succeeds or "changed=0" not in output:
                 raise RuntimeError(f"Host guard regression failed: {label}\n{output}")
+            if "runtime account" in label and "Set dcmcp_user" not in output:
+                raise RuntimeError(f"Explicit user guard did not provide guidance: {label}\n{output}")
             print(f"PASS: {label}", flush=True)
     print(f"All {len(cases)} native host guard cases passed.")
     return 0

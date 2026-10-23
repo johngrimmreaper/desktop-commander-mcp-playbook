@@ -9,7 +9,8 @@ connect directly to the MCP server.
 
 This is a native host daemon. Installation, startup, restarts and tool execution
 do not require Docker, Podman, a container runtime or a Docker socket mount.
-The daemon uses the host's systemd, filesystem and existing mcp_operator permissions.
+The daemon uses the host's systemd, filesystem and permissions of the
+**explicitly selected existing Linux account**.
 
 Installation stages files and versions. **Only explicit activation starts the
 daemon**, after the operator manually copies and edits the configuration files
@@ -23,15 +24,18 @@ grant that access.
 | --- | --- |
 | Host | Ubuntu 26.04 LTS only, headless, native systemd (VM or physical host) |
 | Architecture | x86_64/amd64 or aarch64/arm64, glibc |
-| Runtime user | Existing mcp_operator account and existing sudo; dedicated process HOME |
+| Runtime user | **Required manual `dcmcp_user` in untracked inventory; no default or automatic selection** |
 | Controller | Ubuntu 26.04, Python 3.14 and ansible-core 2.21.5 |
 | Desktop Commander | 0.3.1 |
 | Node.js | 24.21.0, installed privately in the versioned release bundle |
 | tunnel-client | 0.0.16, official Linux bundle with a pinned checksum |
 | Lint | ansible-lint 26.9.0; dependencies in requirements-dev.txt |
 
-The role does not create users, groups or sudoers rules. It preserves the
-existing user's permissions. The example JSON leaves blockedCommands and
+The role never creates users, groups or sudoers rules. The operator MUST
+select `dcmcp_user` in an ignored local inventory before **any** playbook can
+run. It never uses the Ansible login account, root or a hardcoded `mcp_operator` as a
+fallback. It preserves the selected existing user's permissions. The
+example JSON leaves blockedCommands and
 allowedDirectories empty, following the decision to use existing Linux
 permissions and sudo access. The MCP does not guarantee interactive sudo:
 authentication requirements follow the host's sudo configuration.
@@ -48,9 +52,10 @@ untested. See the
 The desktop-commander-mcp.service unit runs a launcher that holds a local lock,
 performs offline preflight and then executes tunnel-client run --config.
 The official client starts mcp-child, which uses exec to run dist/index.js with
---no-onboarding. The unit runs as the existing mcp_operator user with process HOME set to
-/var/lib/desktop-commander-mcp/home and WorkingDirectory set to the account's
-passwd home (normally /home/mcp_operator). Desktop Commander stores its config under
+--no-onboarding. The unit runs as the manually selected `dcmcp_user` with
+process HOME set to /var/lib/desktop-commander-mcp/home and WorkingDirectory
+set by default to that account's real home from `/etc/passwd`. Desktop
+Commander stores its config under
 that process HOME. This keeps the daemon's config/caches separate from the
 Remote Desktop Commander application and interactive MCP clients. The user
 retains access to its normal home, Docker and sudo according to Linux permissions.
@@ -78,8 +83,8 @@ the process's total network traffic is not limited to the OpenAI host.
 
 ## 1. Prepare the controller and inventory
 
-For a local deployment on ubuntu-test-vm or another native Ubuntu 26.04 host, run
-these commands from the checkout as the existing mcp_operator user:
+For a local deployment on a native Ubuntu 26.04 host, run these commands
+from the checkout as an operator permitted to use sudo:
 
 ```bash
 sudo apt-get update
@@ -87,26 +92,62 @@ sudo apt-get install -y python3-venv
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 cp -n inventory/local.example.yml inventory/hosts.yml
-vi inventory/hosts.yml
+vi inventory/hosts.yml    # REQUIRED: uncomment and set dcmcp_user
 .venv/bin/ansible-playbook playbooks/install.yml
 ```
 
-The local inventory uses ansible_connection: local and /usr/bin/python3.
-It uses neither SSH nor Docker. Install needs the existing account's sudo rights.
-If sudo requires a password, add --ask-become-pass; do not commit the password.
+**You must manually configure `dcmcp_user`** in `inventory/hosts.yml`.
+The file is excluded from Git by `.gitignore`. For example, on a local host:
 
-For a separate Ubuntu 26.04 server, use inventory/hosts.example.yml instead;
-that inventory uses ansible_user: mcp_operator. Local inventories, configuration and
-secrets are covered by .gitignore. To change the working directory, set
-dcmcp_workdir in inventory and create the directory manually.
+```yaml
+all:
+  children:
+    mcp_servers:
+      hosts:
+        localhost:
+          ansible_connection: local
+          ansible_python_interpreter: /usr/bin/python3
+          dcmcp_user: alice  # REPLACE with an existing non-root Linux user
+```
+
+The committed inventory templates contain only **commented placeholders**.
+Uncomment the `dcmcp_user` entry and supply the real Linux account yourself.
+An absent, blank, invalid, root or nonexistent user stops execution before
+installation changes anything. Neither the login account nor a built-in
+default is used as a fallback. No users, groups or sudo rules are created.
+
+`dcmcp_user` is the account that runs the MCP systemd service and owns its
+private configuration. It is independent of `ansible_user`, the SSH login
+for Ansible. The process HOME remains the private fixed location described
+below, while the default working directory comes from the selected account's
+passwd home directory.
+
+The local inventory uses `ansible_connection: local` and `/usr/bin/python3`;
+no SSH or Docker is required. Installation needs the controller's existing
+sudo rights. If sudo requires a password, add `--ask-become-pass`; never
+commit that password. For a remote Ubuntu 26.04 host, copy
+`inventory/hosts.example.yml` to `inventory/hosts.yml`, then manually set
+`ansible_host`, `ansible_user` and `dcmcp_user`.
+
+Changing `dcmcp_user` on an **already running installation** is not a user
+migration. Its existing configuration and private files belong to the prior
+account; transferring ownership requires a separate, controlled procedure.
+Do not expect a simple variable change to migrate secrets or restart the
+running service as a different user. To change the working directory, set
+`dcmcp_workdir` in the ignored inventory and create that directory manually.
+
+This feature selects the Linux runtime user only. **The current tunnel backend
+is still the OpenAI Secure MCP Tunnel**; support for other AI tunnel protocols
+would be a separate feature.
 
 Installation adds Ubuntu dependencies, downloads Node and tunnel-client with
 SHA-256 verification, retrieves Desktop Commander source at an immutable commit,
-verifies the lockfile's Git blob and uses npm ci --ignore-scripts. All remote packages in the reviewed lockfile carry integrity hashes and use the
-official npm registry. The one allowlisted local telemetry contract is verified
-against the pinned Git source and a precise local-link manifest. The explicit build uses the architecture's esbuild binary, already
-verified by npm; it does not use npx, @latest, npm install or setup/remote/
-telemetry scripts.
+verifies the lockfile's Git blob and uses npm ci --ignore-scripts.
+All remote packages in the reviewed lockfile carry integrity hashes and use
+the official npm registry. The one allowlisted local telemetry contract is
+verified against the pinned Git source and its local-link manifest. The
+explicit build uses the architecture's esbuild binary, already verified by npm.
+It does not use npx, @latest, npm install or setup/remote/telemetry scripts.
 
 The role performs syntax, version, SDK, sharp, esbuild and ripgrep smoke checks
 when the operator runs it. These checks do not start Desktop Commander.
@@ -130,18 +171,19 @@ of overwriting code.
 
 ## 2. MANUALLY copy and edit the active files
 
-On the host, use a session belonging to the existing mcp_operator account. The role
-creates private directories but **never copies examples into these active files**:
+On the host, use a session belonging to the selected `dcmcp_user` account.
+The role creates private directories but **never copies examples into these active files**:
 
 | Active file | Owner/mode |
 | --- | --- |
-| /var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml | mcp_operator, 0600 |
-| /var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/runtime.key | mcp_operator, 0600 |
-| /var/lib/desktop-commander-mcp/home/.claude-server-commander/config.json | mcp_operator, 0600 |
-| Both configuration directories | mcp_operator, 0700 |
+| /var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml | selected `dcmcp_user`, 0600 |
+| /var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/runtime.key | selected `dcmcp_user`, 0600 |
+| /var/lib/desktop-commander-mcp/home/.claude-server-commander/config.json | selected `dcmcp_user`, 0600 |
+| Both configuration directories | selected `dcmcp_user`, 0700 |
 
-The role creates /var/lib/desktop-commander-mcp/home with owner mcp_operator and
-mode 0700. This is the daemon's process HOME, not the operator's login home.
+The role creates /var/lib/desktop-commander-mcp/home owned by the
+configured `dcmcp_user`, with mode 0700. This is the daemon's process HOME,
+not the operator's login home.
 WorkingDirectory does not change Desktop Commander's configuration path.
 
 ```bash
@@ -182,7 +224,8 @@ PY
 Do not use OPENAI_ADMIN_KEY or an administrative key in the daemon. The YAML
 references runtime.key through upstream's native file: mechanism. The launcher
 removes environment overrides, and the tunnel does not place this key in argv
-or the child's environment. Processes retain the mcp_operator user's filesystem
+or the child's environment. Processes retain the configured Linux user's
+filesystem
 permissions, including access to files that user owns.
 
 ## 3. Validate and activate
@@ -276,11 +319,12 @@ The curl commands alone do not establish listener ownership. /health/mcp
 reports observations from the same child; readiness and discovery provide
 different evidence. Do not expose health/UI on the network.
 
-To run preflight directly as mcp_operator, pass the RELEASE_ID reported by installation;
+To run preflight directly as the configured service account, pass the user
+**explicitly**, plus the RELEASE_ID reported by installation;
 the current selector does not exist before the first activation:
 
 ```bash
-env HOME=/var/lib/desktop-commander-mcp/home python3 /usr/local/libexec/desktop-commander-mcp/preflight.py --release /opt/desktop-commander-mcp/releases/RELEASE_ID
+env HOME=/var/lib/desktop-commander-mcp/home python3 /usr/local/libexec/desktop-commander-mcp/preflight.py --user YOUR_RUNTIME_USER --release /opt/desktop-commander-mcp/releases/RELEASE_ID
 ```
 
 To validate the installed artifacts before creating active configuration,
@@ -289,7 +333,7 @@ built entry point and native dependencies without reading keys or starting
 either daemon:
 
 ```bash
-env HOME=/var/lib/desktop-commander-mcp/home python3 /usr/local/libexec/desktop-commander-mcp/preflight.py --release-only --release /opt/desktop-commander-mcp/releases/RELEASE_ID
+env HOME=/var/lib/desktop-commander-mcp/home python3 /usr/local/libexec/desktop-commander-mcp/preflight.py --user YOUR_RUNTIME_USER --release-only --release /opt/desktop-commander-mcp/releases/RELEASE_ID
 ```
 
 The official client's doctor command is optional. With the daemon stopped,
@@ -298,7 +342,7 @@ without starting another child. It does not prove runtime permissions in OpenAI.
 Use a clean environment and the active YAML:
 
 ```bash
-env -i HOME=/var/lib/desktop-commander-mcp/home USER=mcp_operator SHELL=/bin/bash PATH=/opt/desktop-commander-mcp/current/node/bin:/usr/bin:/bin /opt/desktop-commander-mcp/current/tunnel/tunnel-client doctor --config "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml" --explain
+env -i HOME=/var/lib/desktop-commander-mcp/home USER=YOUR_RUNTIME_USER SHELL=/bin/bash PATH=/opt/desktop-commander-mcp/current/node/bin:/usr/bin:/bin /opt/desktop-commander-mcp/current/tunnel/tunnel-client doctor --config "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml" --explain
 ```
 
 | Symptom | Check |
@@ -348,7 +392,7 @@ Nothing is auto-activated on a new host.
 2. From an **independent SSH/console session**, run:
 
    ```bash
-   cd ~/Projects/desktop-commander-mcp-ansible
+   cd /path/to/desktop-commander-mcp-ansible
    .venv/bin/ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml
    ```
 
@@ -373,7 +417,7 @@ cgroup by using the script described in `scripts/upgrade-detached.sh`. Its
 transient unit and logs survive the MCP restart:
 
 ```bash
-cd ~/Projects/desktop-commander-mcp-ansible
+cd /path/to/desktop-commander-mcp-ansible
 bash scripts/upgrade-detached.sh
 # After reconnecting, see the unit name printed above:
 sudo journalctl -u dcmcp-upgrade-YYYYMMDDTHHMMSS.service --no-pager -n 100
@@ -412,7 +456,7 @@ To rotate the key, deactivate, edit runtime.key manually while retaining mode
 
 deactivate stops the children and daemon and disables startup at boot.
 uninstall removes only this project's managed bundle/releases, cached downloads,
-helpers, examples, unit and fingerprint. It preserves the mcp_operator user, sudoers,
+helpers, examples, unit and fingerprint. It preserves the selected user, sudoers,
 Ubuntu dependencies, the entire daemon process home (including the three active files and keys),
 the account's home and working-directory data.
 

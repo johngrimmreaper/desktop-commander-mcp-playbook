@@ -1,5 +1,28 @@
 # Native Ubuntu 26.04 validation
 
+## Explicit runtime-account selection validation (2026-10-22)
+
+The installation no longer defaults to the `mcp_operator` account. Operators must
+manually set `dcmcp_user` in the Git-ignored `inventory/hosts.yml`; distributed
+examples contain commented placeholders only. The runtime-user guard is the
+first task in the common `context.yml`, before user lookups or installation
+mutations. The standalone Python preflight CLI also requires `--user`.
+
+| Check | Result |
+| --- | --- |
+| No defaults/example inventory user | PASS: parsed YAML excludes `dcmcp_user` |
+| Missing, empty, invalid runtime account | PASS: native Ansible guard refuses them with changed=0 and explicit instruction |
+| Missing user in real install.yml execution | PASS: failed=1 changed=0, production MCP remains running |
+| Missing user in real uninstall.yml execution | PASS: failed=1 changed=0, existing service and release selector untouched |
+| Valid private inventory preflight | PASS: changed=0 with explicit runtime account, no service restart |
+| Previously supported native/container guard cases | PASS: all 17 guard regressions |
+| Local install with explicit user | PASS: first replay changed=2 for updated helper/unit, second replay changed=0, configuration/selector/activation preserved |
+| Direct standalone preflight without `--user` | PASS: argparse rejects invocation with exit code 2 |
+
+User selection is now explicit; it does not change the OpenAI-specific tunnel
+backend nor implement migration between users on an already deployed host.
+
+
 ## Update validation on 2026-10-22
 
 This update upgrades the pinned Desktop Commander source from 0.2.52
