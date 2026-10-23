@@ -531,6 +531,24 @@ the account's home and working-directory data.
 Revoke the key/tunnel and remove the OpenAI connector when you stop using it.
 Disposal of preserved private files remains an operator's manual decision.
 
+## Read-only diagnostics (any supported host)
+
+Run as the configured runtime user, directly from the checkout:
+
+```bash
+.venv/bin/python scripts/doctor.py
+.venv/bin/python scripts/doctor.py --json
+```
+
+The doctor checks systemd status, the selected immutable release, runtime
+identity, configuration file ownership/modes, loopback-only readiness, the MCP
+child process and SELinux status. It never starts, stops or changes anything,
+never needs sudo, and never prints API keys, tunnel IDs or configuration
+contents. HTTP checks are restricted to the configured `127.0.0.1` health
+listener, without redirects or proxies. Its exit code is 0 when the runtime
+checks pass and 1 if unhealthy. This is a local health check, not proof that
+ChatGPT is able to invoke every tool through the OpenAI control plane.
+
 ## Native validation on Ubuntu 26.04
 
 The offline check runner uses the tools installed alongside its Python interpreter,
