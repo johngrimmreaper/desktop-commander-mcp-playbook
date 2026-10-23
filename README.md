@@ -568,6 +568,30 @@ listener, without redirects or proxies. Its exit code is 0 when the runtime
 checks pass and 1 if unhealthy. This is a local health check, not proof that
 ChatGPT is able to invoke every tool through the OpenAI control plane.
 
+## Native read-only installed-release audit (Ubuntu, RHEL, Fedora)
+
+After successful activation on a supported native Linux host, run as the
+**same existing non-root account** that owns the service, without sudo:
+
+```bash
+.venv/bin/python scripts/test-installed-readonly.py --local
+.venv/bin/python scripts/test-installed-readonly.py --local --json
+```
+
+This does **not** install, reload, restart, activate, or uninstall anything.
+It checks that the root-owned selected release exactly matches the source,
+lockfile and archive checksums pinned in the current Git checkout; that the
+configured service identity matches the caller; that the installed preflight
+passes for both the immutable release and active private configuration; and
+that the managed daemon passes the ownership-aware doctor. Results contain
+only boolean statuses and never secrets, external command output, or API keys.
+
+This test intentionally fails if the local checkout already pins a *new*
+release while an older installed release is active. It also fails on inactive
+or unconfigured systems. The script uses the installed root-owned helper for
+preflight, so it does not require changing host permissions or sudo policy.
+Local readiness does not replace an actual ChatGPT-originated MCP tool call.
+
 ## Optional passive health monitoring
 
 The production service is **not** restarted or changed to install monitoring.
