@@ -90,6 +90,28 @@
     state: present
   when: ansible_facts['distribution'] == 'Fedora'
 
+# Arch is a rolling distribution: never refresh package DBs without a full
+# upgrade. The operator updates Omarchy/Arch separately before installation.
+# community.general.pacman (installed on the Ansible controller) handles
+# idempotent package resolution; no AUR helper or custom pacman wrapper.
+- name: Install Arch Linux and Omarchy dependencies from existing pacman databases
+  community.general.pacman:
+    name:
+      - ca-certificates
+      - git
+      - xz
+      - unzip
+      - python
+      - python-yaml
+      - ripgrep
+      - base-devel
+      - libatomic
+    state: present
+    update_cache: false
+    # Do not set upgrade alongside name: community.general.pacman treats
+    # them as mutually exclusive. The default upgrade is false.
+  when: ansible_facts['distribution'] == 'Archlinux'
+
 - name: Read SELinux enforcement mode using the target OS, not cached Ansible facts
   ansible.builtin.command:
     argv: [/usr/bin/env, getenforce]

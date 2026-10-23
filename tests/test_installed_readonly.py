@@ -35,7 +35,7 @@ class InstalledReadOnlyTests(unittest.TestCase):
                            'systemctl restart', 'systemctl start', 'systemctl stop',
                            'ansible-playbook', 'write_text(', 'open("w")'):
             self.assertNotIn(prohibited, source)
-        self.assertIn('require_native_host(allow_rpm=True)', source)
+        self.assertIn('require_native_host(allow_rpm=True, allow_arch=True)', source)
         self.assertIn('capture_output=True', source)
 
 

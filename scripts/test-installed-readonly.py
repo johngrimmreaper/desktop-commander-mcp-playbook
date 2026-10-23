@@ -104,7 +104,7 @@ def main():
     args = parser.parse_args()
     if not args.local:
         parser.error('--local is required to select the installed host explicitly')
-    require_native_host(allow_rpm=True)
+    require_native_host(allow_rpm=True, allow_arch=True)
     try:
         checks = audit()
     except (OSError, KeyError, ValueError, subprocess.TimeoutExpired):

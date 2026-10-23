@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    require_native_host(allow_rpm=True)
+    require_native_host(allow_rpm=True, allow_arch=True)
     source = yaml.safe_load((ROOT / "roles/dcmcp/tasks/context.yml").read_text())
     # Test the actual early guard without reaching account or deployment tasks.
     boundary = next(i for i, task in enumerate(source)
@@ -49,6 +49,9 @@ def main():
                             "distribution_major_version": "43"}, None, True),
              ("Fedora 44", {"distribution": "Fedora", "distribution_version": "44",
                             "distribution_major_version": "44"}, None, True),
+             ("Arch Linux rolling / Omarchy", {"distribution": "Archlinux",
+                                                "distribution_version": "rolling",
+                                                "distribution_major_version": ""}, None, True),
              ("Fedora 45 beta", {"distribution": "Fedora", "distribution_version": "45",
                                  "distribution_major_version": "45"}, None, False),
              ("Debian 13", {"distribution": "Debian", "distribution_version": "13",

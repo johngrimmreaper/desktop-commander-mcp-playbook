@@ -8,7 +8,8 @@ from scripts import host
 
 class NativeHostGuardTests(unittest.TestCase):
     @staticmethod
-    def check(distro, version, *, allow_rpm=False, container_rc=1, pid1="systemd"):
+    def check(distro, version, *, allow_rpm=False, allow_arch=False, container_rc=1,
+              pid1="systemd"):
         def read_text(path):
             if str(path) == "/etc/os-release":
                 return f'ID={distro}\nVERSION_ID="{version}"\n'
@@ -20,11 +21,11 @@ class NativeHostGuardTests(unittest.TestCase):
                                 side_effect=lambda self: read_text(self)),
               mock.patch.object(host.subprocess, "run",
                                 return_value=subprocess.CompletedProcess([], container_rc))):
-            host.require_native_host(allow_rpm=allow_rpm)
+            host.require_native_host(allow_rpm=allow_rpm, allow_arch=allow_arch)
 
     def test_only_ubuntu_is_allowed_for_destructive_suites(self):
         self.check("ubuntu", "26.04")
-        for distro, version in (("rhel", "10.2"), ("fedora", "43"),
+        for distro, version in (("arch", "rolling"), ("rhel", "10.2"), ("fedora", "43"),
                                 ("fedora", "44"), ("ubuntu", "24.04")):
             with self.subTest(distro=distro, version=version):
                 with self.assertRaises(SystemExit):
@@ -35,6 +36,11 @@ class NativeHostGuardTests(unittest.TestCase):
                                 ("rhel", "10.2"), ("fedora", "43"), ("fedora", "44")):
             with self.subTest(distro=distro, version=version):
                 self.check(distro, version, allow_rpm=True)
+
+    def test_arch_requires_explicit_safe_host_opt_in(self):
+        with self.assertRaises(SystemExit):
+            self.check("arch", "rolling", allow_rpm=True)
+        self.check("arch", "rolling", allow_rpm=True, allow_arch=True)
 
     def test_unsupported_releases_and_non_native_hosts_are_rejected(self):
         for distro, version in (("rhel", "9.7"), ("fedora", "45"),

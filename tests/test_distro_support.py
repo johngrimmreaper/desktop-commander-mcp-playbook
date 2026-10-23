@@ -1,4 +1,4 @@
-"""Static contracts for separate Ubuntu, RHEL and Fedora packaging backends."""
+"""Static contracts for Ubuntu, RHEL, Fedora and Arch Linux backends."""
 from pathlib import Path
 import unittest
 
@@ -15,7 +15,14 @@ class DistroPackagesTests(unittest.TestCase):
         apt = [task for task in tasks if "ansible.builtin.apt" in task]
         dnf = [task for task in tasks if "ansible.builtin.dnf" in task]
         dnf5 = [task for task in tasks if "ansible.builtin.dnf5" in task]
-        self.assertEqual((len(apt), len(dnf), len(dnf5)), (1, 1, 1))
+        pacman = [task for task in tasks if "community.general.pacman" in task]
+        self.assertEqual((len(apt), len(dnf), len(dnf5), len(pacman)), (1, 1, 1, 1))
+        arch = pacman[0]["community.general.pacman"]
+        self.assertEqual(arch["state"], "present")
+        self.assertIs(arch["update_cache"], False)
+        self.assertNotIn("upgrade", arch)  # Mutually exclusive with name; defaults false.
+        self.assertIn("Archlinux", pacman[0]["when"])
+        self.assertTrue({"python", "python-yaml", "base-devel", "libatomic", "ripgrep"} <= set(arch["name"]))
         self.assertEqual(dnf[0]["ansible.builtin.dnf"]["use_backend"], "dnf4")
         for task, distro in ((apt[0], "Ubuntu"), (dnf[0], "RedHat"),
                              (dnf5[0], "Fedora")):
@@ -28,6 +35,19 @@ class DistroPackagesTests(unittest.TestCase):
             self.assertTrue({"gcc", "gcc-c++", "make", "libatomic", "python3-pyyaml",
                              "python3-libselinux", "libselinux-utils"}
                             <= set(task[module]["name"]))
+
+    def test_pacman_collection_is_pinned_and_arch_is_not_a_partial_upgrade(self):
+        requirements = yaml.safe_load((ROOT / "collections/requirements.yml").read_text())
+        self.assertIn({"name": "community.general", "version": "13.5.0"},
+                      requirements["collections"])
+        tasks = yaml.safe_load((TASKS / "packages.yml").read_text())
+        pacman = next(task["community.general.pacman"] for task in tasks
+                      if "community.general.pacman" in task)
+        self.assertEqual(pacman["state"], "present")
+        self.assertFalse(pacman["update_cache"])
+        self.assertNotIn("upgrade", pacman)
+        self.assertNotIn("extra_args", pacman)
+        self.assertNotIn("executable", pacman)  # Use official pacman, not an AUR helper.
 
     def test_rhel_requires_manually_prepared_trusted_repositories(self):
         tasks = yaml.safe_load((TASKS / "packages.yml").read_text())
@@ -49,7 +69,7 @@ class DistroPackagesTests(unittest.TestCase):
             "dcmcp_helpers": "/usr/local/libexec/desktop-commander-mcp",
         }
         launcher = "/usr/local/libexec/desktop-commander-mcp/run"
-        for distro in ("Ubuntu", "RedHat", "Fedora"):
+        for distro in ("Ubuntu", "RedHat", "Fedora", "Archlinux"):
             with self.subTest(distribution=distro):
                 unit = engine.from_string(template).render(**variables,
                         ansible_facts={"distribution": distro})

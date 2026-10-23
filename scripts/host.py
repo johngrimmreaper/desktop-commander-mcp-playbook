@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess
 
 
-def require_native_host(*, allow_rpm=False):
+def require_native_host(*, allow_rpm=False, allow_arch=False):
     """Keep destructive suites Ubuntu-only until explicitly ported and audited.
 
     Safe synthetic-facts tests may opt into the role's current RPM baselines.
@@ -19,8 +19,13 @@ def require_native_host(*, allow_rpm=False):
     rpm = ((host[0] == "rhel" and host[1] is not None
             and host[1].split(".")[0] == "10")
            or host in (("fedora", "43"), ("fedora", "44")))
-    if not ubuntu and not (allow_rpm and rpm):
-        supported = "Ubuntu 26.04, RHEL 10, Fedora 43/44" if allow_rpm else "Ubuntu 26.04"
+    arch = host[0] == "arch"  # Omarchy retains Arch Linux's ID in os-release.
+    if not ubuntu and not (allow_rpm and rpm) and not (allow_arch and arch):
+        supported = "Ubuntu 26.04"
+        if allow_rpm:
+            supported += ", RHEL 10, Fedora 43/44"
+        if allow_arch:
+            supported += ", Arch Linux/Omarchy"
         raise SystemExit(f"This native test requires {supported}; this host is unsupported.")
     container = subprocess.run(["systemd-detect-virt", "--container"], capture_output=True,
                                text=True, check=False)
