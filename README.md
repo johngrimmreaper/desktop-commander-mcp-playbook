@@ -461,14 +461,15 @@ Nothing is auto-activated on a new host.
 
    ```bash
    cd /path/to/desktop-commander-mcp-ansible
-   .venv/bin/ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml
+   .venv/bin/ansible-playbook -i inventory/hosts.yml playbooks/upgrade.yml --ask-become-pass
    ```
 
 3. This single command refuses inactive/disabled or unconfigured hosts,
    stages the immutable bundle while production continues running, validates
    the config/key and candidate, and uses the existing controlled activation
    to stop the old cgroup, atomically switch `current`, start and check readiness.
-   A subsequent invocation is idempotent if nothing has changed.
+   A subsequent invocation is idempotent if nothing has changed. Omit
+   `--ask-become-pass` only if your sudo policy is already noninteractive.
 4. Verify `systemctl status desktop-commander-mcp.service`, `/readyz`, the
    journal, tool discovery and a real command from ChatGPT. The old release is
    retained for rollback.
@@ -481,8 +482,16 @@ systemd transient unit before the restart. This is also true for manual
 
 To run the upgrade **from an existing Desktop Commander session** when no
 independent SSH session is available, detach the controller from its service
-cgroup by using the script described in `scripts/upgrade-detached.sh`. Its
-transient unit and logs survive the MCP restart:
+cgroup by using `scripts/upgrade-detached.sh`. The launcher validates an
+**explicit local-only inventory**, invokes `sudo -v` to authenticate in the
+current terminal if necessary, then starts a **root-owned transient systemd
+unit**. Because the detached controller is already privileged, it needs no
+stored sudo password, inherited sudo timestamp or interactive TTY after launch.
+Its transient unit and logs survive the MCP restart. The detached launcher
+**does not support SSH/remote inventories**; use an independent controller
+for those. If password-based sudo cannot prompt in your current MCP session,
+authenticate and launch from an independent SSH/console session instead.
+No NOPASSWD sudoers changes are made:
 
 ```bash
 cd /path/to/desktop-commander-mcp-ansible
@@ -494,7 +503,10 @@ sudo journalctl -u dcmcp-upgrade-YYYYMMDDTHHMMSS.service --no-pager -n 100
 An activation failure restores the previous release *selector and enablement*
 and stops the daemon to avoid falsely claiming a healthy rollback. Run a manual
 recovery through SSH/console, or use the detached upgrader's automatic recovery
-attempt. Recovery retries `preflight.yml` and `activate.yml` on the prior bundle
+attempt. This revised password-sudo detached path has unit/static tests but
+has **not yet undergone a live RHEL upgrade test**; first trial should use an
+independent console with rollback access. Recovery retries `preflight.yml` and
+`activate.yml` on the prior bundle
 and confirms readiness; it cannot fix invalidated credentials or remote access.
 
 To manually roll back to an installed bundle's ID (restore compatible config

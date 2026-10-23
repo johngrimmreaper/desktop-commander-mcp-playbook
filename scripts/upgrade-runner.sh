@@ -11,6 +11,14 @@ selector=/opt/desktop-commander-mcp/current
 service=desktop-commander-mcp.service
 export ANSIBLE_CONFIG="$root/ansible.cfg"
 
+# The detached transient system service runs as root; no sudo passwords or
+# sessions are inherited from the runtime MCP account.
+if [[ $(id -u) != 0 ]]; then
+  echo 'Detached upgrade runner must execute as root in its systemd unit.' >&2
+  exit 2
+fi
+"$root/.venv/bin/python" "$root/scripts/validate-local-inventory.py" "$inventory"
+
 if [[ ! -x "$playbook" || ! -f "$inventory" || ! -L "$selector" ]]; then
   echo 'Upgrade prerequisites missing. No changes made.' >&2
   exit 2
