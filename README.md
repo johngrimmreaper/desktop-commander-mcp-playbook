@@ -41,6 +41,11 @@ allowedDirectories empty, following the decision to use existing Linux
 permissions and sudo access. The MCP does not guarantee interactive sudo:
 authentication requirements follow the host's sudo configuration.
 
+This grants a remote ChatGPT plugin substantial authority under the selected
+Linux identity, not a container sandbox. Review the
+[security boundaries and operator responsibilities](docs/security.md) before
+activating a tunnel with access to sensitive projects or sudo.
+
 The host guard rejects unsupported distribution releases, container targets
 and architectures before installing anything. Native Ubuntu 26.04 on x86_64
 has been integration-tested on an Ubuntu test VM. **RHEL 10.2 x86_64 was installed,
