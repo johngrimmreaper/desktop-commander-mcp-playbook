@@ -1,5 +1,6 @@
 """User selection must be explicit, never inferred from host/SSH identity."""
 from pathlib import Path
+import re
 import subprocess
 import sys
 import unittest
@@ -11,13 +12,28 @@ ROLE = ROOT / "roles/dcmcp"
 
 
 class ExplicitRuntimeUserTests(unittest.TestCase):
-    def test_no_implicit_user_in_default_vars_or_example_inventories(self):
+    def test_explicit_space_indented_account_placeholder_in_examples(self):
         defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
         self.assertNotIn("dcmcp_user", defaults)
-        for filename in ("local.example.yml", "hosts.example.yml"):
-            inventory = yaml.safe_load((ROOT / "inventory" / filename).read_text())
-            for host in inventory["all"]["children"]["mcp_servers"]["hosts"].values():
-                self.assertNotIn("dcmcp_user", host)
+        for filename, preceding_key in (
+            ("local.example.yml", "ansible_python_interpreter"),
+            ("hosts.example.yml", "ansible_user"),
+        ):
+            with self.subTest(filename=filename):
+                example = (ROOT / "inventory" / filename).read_text()
+                self.assertNotIn("\t", example, "YAML examples must use spaces, not tabs")
+                lines = example.splitlines()
+                account_line = "          dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT"
+                self.assertEqual(lines.count(account_line), 1)
+                index = lines.index(account_line)
+                self.assertTrue(lines[index - 1].startswith(f"          {preceding_key}: "))
+                inventory = yaml.safe_load(example)
+                hosts = inventory["all"]["children"]["mcp_servers"]["hosts"]
+                self.assertEqual(len(hosts), 1)
+                user = next(iter(hosts.values()))["dcmcp_user"]
+                self.assertEqual(user, "REPLACE_WITH_EXISTING_LINUX_ACCOUNT")
+                # This is a configuration prompt, never an implicit runtime identity.
+                self.assertIsNone(re.fullmatch(r"[a-z_][a-z0-9_-]*", user))
 
     def test_first_role_task_rejects_missing_user_before_mutation(self):
         tasks = yaml.safe_load((ROLE / "tasks/context.yml").read_text())

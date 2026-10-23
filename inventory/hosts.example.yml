@@ -7,8 +7,9 @@ all:
           ansible_host: REPLACE_WITH_SERVER_ADDRESS
           # SSH account (may differ from the MCP runtime account).
           ansible_user: REPLACE_WITH_SSH_USER
-          # REQUIRED: uncomment and set the account for the MCP service.
-          # dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT
+          dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT
+          # REQUIRED: replace this placeholder with the existing MCP runtime user.
+          # Spaces only; dcmcp_user is separate from the SSH login above.
           # Native Ubuntu 26.04, RHEL 10 or Fedora 43/44 only; no Docker runtime dependency.
           # Existing sudo only; pass --ask-become-pass if the host requires it.
           # ansible_become_password belongs in Ansible Vault, never here.

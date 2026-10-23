@@ -93,7 +93,7 @@ sudo apt-get install -y python3-venv
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
 cp -n inventory/local.example.yml inventory/hosts.yml
-vi inventory/hosts.yml    # REQUIRED: uncomment and set dcmcp_user
+vi inventory/hosts.yml    # REQUIRED: replace the dcmcp_user placeholder
 .venv/bin/ansible-playbook playbooks/install.yml
 ```
 
@@ -111,11 +111,15 @@ all:
           dcmcp_user: alice  # REPLACE with an existing non-root Linux user
 ```
 
-The committed inventory templates contain only **commented placeholders**.
-Uncomment the `dcmcp_user` entry and supply the real Linux account yourself.
-An absent, blank, invalid, root or nonexistent user stops execution before
-installation changes anything. Neither the login account nor a built-in
-default is used as a fallback. No users, groups or sudo rules are created.
+The committed inventory templates contain an **already space-indented**
+`dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT` line immediately below the
+connection settings. Replace the placeholder with your actual existing Linux
+account, for example `mcp_operator`. Do not comment out the line or use tabs for
+YAML indentation. In `vi`, `:set expandtab shiftwidth=2 tabstop=2` can help.
+The placeholder is intentionally invalid as a runtime account: an unchanged,
+missing, blank, root or nonexistent user stops execution before installation
+changes anything. Neither the login account nor a built-in default is used as
+a fallback. No users, groups or sudo rules are created.
 
 `dcmcp_user` is the account that runs the MCP systemd service and owns its
 private configuration. It is independent of `ansible_user`, the SSH login
