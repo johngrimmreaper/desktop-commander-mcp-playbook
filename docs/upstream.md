@@ -7,6 +7,28 @@ or other instructions. The ruleset query returned 403 because the feature was
 unavailable on the private repository's plan; the branch was reported as
 unprotected. This does not replace user authorization to update refs/open PRs.
 
+## RPM distribution reconnaissance (2026-10-23)
+
+RHEL 10 uses DNF and provides `python3-pyyaml`, `libatomic`, `gcc`, `make`
+through its RPM packaging ecosystem. Fedora 43/44 uses DNF5 and packages
+`ripgrep`, `python3-pyyaml` and `libatomic` natively.
+
+- RHEL documentation: <https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html-single/managing_software_with_the_dnf_tool/index>
+- RHEL 10 package manifest: <https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html-single/package_manifest/index>
+- Fedora ripgrep builds (Fedora/EPEL 10): <https://packages.fedoraproject.org/pkgs/rust-ripgrep/ripgrep/>
+- RHEL Extensions and EPEL note: <https://access.redhat.com/solutions/3358>
+- Ansible dnf4/dnf5 backends: <https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/dnf_module.html> and <https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/dnf5_module.html>
+- RHEL SELinux guidance: <https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html-single/using_selinux/index>
+
+The installation deliberately leaves subscription/repository enrollment and
+SELinux policy management to the administrator. `restorecon` uses distro
+file contexts for *managed* paths only. Launching a system-labeled
+`/usr/bin/python3` instead of directly executing an ad hoc script is an
+additional conservative measure for SELinux. It does not prove all AVCs are
+absent or the service works under Enforcing mode. These decisions need real
+host confirmation. Fedora 45 was still a beta/prerelease at review and is
+not in the supported host allowlist.
+
 ## Release refresh on 2026-10-22
 
 Desktop Commander [v0.3.1](https://github.com/wonderwhy-er/DesktopCommanderMCP/releases/tag/v0.3.1)

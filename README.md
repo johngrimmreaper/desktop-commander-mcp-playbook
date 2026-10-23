@@ -2,7 +2,8 @@
 
 Ansible automation for installing the open-source
 [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) on
-headless Ubuntu 26.04 and running it as a stdio child of the official OpenAI client.
+native Ubuntu 26.04, RHEL 10 or Fedora 43/44 and running it as a stdio
+child of the official OpenAI client.
 A single systemd service keeps the server available to the OpenAI backend;
 desktop and mobile devices use ChatGPT. The mobile device does not run or
 connect directly to the MCP server.
@@ -22,10 +23,10 @@ grant that access.
 
 | Component | Baseline |
 | --- | --- |
-| Host | Ubuntu 26.04 LTS only, headless, native systemd (VM or physical host) |
+| Host | Native Ubuntu 26.04 LTS, RHEL 10 or Fedora 43/44; systemd, VM or physical host |
 | Architecture | x86_64/amd64 or aarch64/arm64, glibc |
 | Runtime user | **Required manual `dcmcp_user` in untracked inventory; no default or automatic selection** |
-| Controller | Ubuntu 26.04, Python 3.14 and ansible-core 2.21.5 |
+| Controller | Validated Ubuntu 26.04, Python 3.14, ansible-core 2.21.5; supports SSH targeting RHEL/Fedora |
 | Desktop Commander | 0.3.1 |
 | Node.js | 24.21.0, installed privately in the versioned release bundle |
 | tunnel-client | 0.0.16, official Linux bundle with a pinned checksum |
@@ -40,12 +41,13 @@ allowedDirectories empty, following the decision to use existing Linux
 permissions and sudo access. The MCP does not guarantee interactive sudo:
 authentication requirements follow the host's sudo configuration.
 
-Ansible rejects Ubuntu 24.04, other distributions and container targets before
-installation. The supported deployment and validation environment is a native
-Ubuntu 26.04 systemd host. Native x86_64 installation and MCP/systemd tests
-passed on ubuntu-test-vm; arm64 download pins are provided, but native arm64 remains
-untested. See the
-[validation status](docs/validation.md).
+The host guard rejects unsupported distribution releases, container targets
+and architectures before installing anything. Native Ubuntu 26.04 on x86_64
+has been integration-tested on an Ubuntu test VM; **RHEL 10 and Fedora 43/44 have only
+undergone source-level, Ansible-syntax and synthetic host-fact checks**.
+Do not treat the RPM distributions as production-validated until the native
+integration and SELinux-enforcing tests are completed. arm64 is also untested.
+See [validation status](docs/validation.md).
 
 ## How it works
 
@@ -77,14 +79,13 @@ Run Ansible operations sequentially, with one controller per host.
 
 The tunnel uses outbound HTTPS to api.openai.com:443 without exposing a public
 MCP endpoint. Health/UI bind to 127.0.0.1:8787 in the example. Installation also
-requires HTTPS access to GitHub, nodejs.org and registry.npmjs.org, plus Ubuntu
-mirrors. Optional Desktop Commander features may use other destinations;
+requires HTTPS access to GitHub, nodejs.org and registry.npmjs.org, plus the host distribution's enabled trusted package repositories. Optional Desktop Commander features may use other destinations;
 the process's total network traffic is not limited to the OpenAI host.
 
 ## 1. Prepare the controller and inventory
 
-For a local deployment on a native Ubuntu 26.04 host, run these commands
-from the checkout as an operator permitted to use sudo:
+For a local deployment on the **validated Ubuntu 26.04 controller**, run these
+commands from the checkout as an operator permitted to use sudo:
 
 ```bash
 sudo apt-get update
@@ -125,9 +126,9 @@ passwd home directory.
 The local inventory uses `ansible_connection: local` and `/usr/bin/python3`;
 no SSH or Docker is required. Installation needs the controller's existing
 sudo rights. If sudo requires a password, add `--ask-become-pass`; never
-commit that password. For a remote Ubuntu 26.04 host, copy
-`inventory/hosts.example.yml` to `inventory/hosts.yml`, then manually set
-`ansible_host`, `ansible_user` and `dcmcp_user`.
+commit that password. For a remote Linux host, copy `inventory/hosts.example.yml` to
+`inventory/hosts.yml`, then manually set `ansible_host`, `ansible_user` and
+`dcmcp_user`.
 
 Changing `dcmcp_user` on an **already running installation** is not a user
 migration. Its existing configuration and private files belong to the prior
@@ -140,8 +141,70 @@ This feature selects the Linux runtime user only. **The current tunnel backend
 is still the OpenAI Secure MCP Tunnel**; support for other AI tunnel protocols
 would be a separate feature.
 
-Installation adds Ubuntu dependencies, downloads Node and tunnel-client with
-SHA-256 verification, retrieves Desktop Commander source at an immutable commit,
+### RHEL 10 / Fedora 43-44 setup (provisional)
+
+Use an existing Ansible controller (an Ubuntu test VM is suitable) with an
+SSH connection to the target; a pre-existing tunnel on the destination is
+**not** required. Do not boot or change other VMs merely to test the playbook.
+
+1. Make sure the target uses native systemd, with an existing non-root runtime
+   user, working directory and sudo-capable SSH operator account. RHEL must
+   already be registered to its licensed BaseOS/AppStream repositories.
+2. On **RHEL 10**, ensure `ripgrep` is installed or available from an enabled,
+   trusted repository. It is generally distributed through **EPEL 10** or
+   **RHEL Extensions** rather than the base repository set. Enable the
+   appropriate source manually, following your organization's policies:
+
+   ```bash
+   sudo dnf repolist --enabled
+   sudo dnf list --available ripgrep
+   # After enabling a trusted source, install if needed:
+   sudo dnf install ripgrep
+   ```
+
+   The playbook checks this requirement *before changing packages* and does
+   **not** enroll the machine, install `epel-release`, enable CodeReady Builder
+   or bypass repository signature verification. On Fedora 43/44, ripgrep is
+   available in Fedora's normal repositories.
+3. From your controller, configure an ignored `inventory/hosts.yml`:
+
+   ```yaml
+   all:
+     children:
+       mcp_servers:
+         hosts:
+           rhel10:
+             ansible_host: REPLACE_WITH_RHEL_IP_OR_HOSTNAME
+             ansible_user: REPLACE_WITH_SSH_ACCOUNT
+             ansible_python_interpreter: /usr/bin/python3
+             dcmcp_user: REPLACE_WITH_EXISTING_RUNTIME_ACCOUNT
+   ```
+
+   For Fedora, change the host alias and address. Ansible installs Ubuntu
+   dependencies with APT, RHEL 10 packages with DNF4, and Fedora 43/44 packages
+   with DNF5; it uses platform-specific RPM package names and does not install
+   a second Node.js through the system package manager.
+4. Run `./.venv/bin/ansible-playbook -i inventory/hosts.yml playbooks/install.yml`
+   on the controller, optionally with `--ask-become-pass`. This **only stages**
+   the release. Manually configure the destination's tunnel YAML, runtime key
+   and JSON as in section 2. Run the `preflight.yml` and then `activate.yml`
+   from an SSH session independent of the managed service.
+5. If the target uses SELinux, leave it **Enforcing**. The role restores default
+   SELinux contexts on its own managed files and uses the system-labeled Python
+   binary to launch the supervisor. No custom SELinux policies are installed.
+   Check `systemctl status desktop-commander-mcp.service`,
+   `journalctl -u desktop-commander-mcp.service`, `ls -lZ` on installed paths,
+   and AVC denials with `ausearch -m AVC -ts recent` if activation fails.
+   Any site-specific denial must be diagnosed; **do not use `setenforce 0`**.
+
+For remote targets, package installation still requires correctly configured
+RPM repositories and network access to GitHub, nodejs.org, npm and OpenAI.
+The host-specific daemon runtime, immutable release layout, user selection,
+config ownership and rollback behavior are otherwise unchanged. Full RHEL/Fedora
+native integration tests remain pending.
+
+Installation adds distribution-specific dependencies and downloads Node
+and tunnel-client with SHA-256 verification, retrieves Desktop Commander source at an immutable commit,
 verifies the lockfile's Git blob and uses npm ci --ignore-scripts.
 All remote packages in the reviewed lockfile carry integrity hashes and use
 the official npm registry. The one allowlisted local telemetry contract is
@@ -151,8 +214,8 @@ It does not use npx, @latest, npm install or setup/remote/telemetry scripts.
 
 The role performs syntax, version, SDK, sharp, esbuild and ripgrep smoke checks
 when the operator runs it. These checks do not start Desktop Commander.
-Ubuntu's ripgrep package provides the fallback documented by upstream.
-OS dependencies are maintained by Ubuntu and are not frozen by this project.
+The system ripgrep package provides the fallback documented by upstream.
+OS packages are managed by each distribution and are not frozen by this project.
 
 The complete bundle is published by renaming it into:
 

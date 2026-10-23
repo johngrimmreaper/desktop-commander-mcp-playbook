@@ -164,7 +164,7 @@ def test_missing_configuration(account, release):
             "    - name: Validate native host context\n      ansible.builtin.include_role:\n"
             "        name: dcmcp\n        tasks_from: context\n")
         rejected = run(["ansible-playbook", "-i", str(inventory), str(unsupported)], expected=2)
-        if "changed=0" not in rejected or "native Ubuntu 26.04" not in rejected:
+        if "changed=0" not in rejected or "Supported native hosts" not in rejected:
             raise RuntimeError("Ubuntu 24.04 was not rejected before any change.")
         print("PASS: Ansible rejects synthetic Ubuntu 24.04 facts before any change.", flush=True)
     if state() != {"ActiveState": "inactive", "UnitFileState": "disabled"} or current_link():

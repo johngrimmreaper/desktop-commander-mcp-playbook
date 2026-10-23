@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the real Ansible host guard on native Ubuntu 26.04 with synthetic facts."""
+"""Exercise Linux distro/systemd host guards with synthetic facts on Ubuntu."""
 import copy
 import os
 import pwd
@@ -22,7 +22,8 @@ def main():
                     if task["name"] == "Look up the existing runtime user")
     guard = source[:boundary]
     facts = {"distribution": "Ubuntu", "distribution_version": "26.04",
-             "architecture": os.uname().machine, "service_mgr": "systemd",
+             "distribution_major_version": "26", "architecture": os.uname().machine,
+             "service_mgr": "systemd",
              "virtualization_type": "kvm", "virtualization_tech_guest": ["kvm"]}
     variables = {"ansible_facts": facts, "dcmcp_user": pwd.getpwuid(os.geteuid()).pw_name,
                  "dcmcp_home": "/var/lib/desktop-commander-mcp/home",
@@ -33,6 +34,20 @@ def main():
              ("native physical host", {"virtualization_type": "", "virtualization_tech_guest": []},
               None, True),
              ("Ubuntu 24.04", {"distribution_version": "24.04"}, None, False),
+             ("RHEL 10.0", {"distribution": "RedHat", "distribution_version": "10.0",
+                            "distribution_major_version": "10"}, None, True),
+             ("RHEL 10.1", {"distribution": "RedHat", "distribution_version": "10.1",
+                            "distribution_major_version": "10"}, None, True),
+             ("RHEL 9", {"distribution": "RedHat", "distribution_version": "9.7",
+                          "distribution_major_version": "9"}, None, False),
+             ("Fedora 43", {"distribution": "Fedora", "distribution_version": "43",
+                            "distribution_major_version": "43"}, None, True),
+             ("Fedora 44", {"distribution": "Fedora", "distribution_version": "44",
+                            "distribution_major_version": "44"}, None, True),
+             ("Fedora 45 beta", {"distribution": "Fedora", "distribution_version": "45",
+                                 "distribution_major_version": "45"}, None, False),
+             ("Debian 13", {"distribution": "Debian", "distribution_version": "13",
+                            "distribution_major_version": "13"}, None, False),
              ("unknown container", {"virtualization_type": "future-container",
                                     "virtualization_tech_guest": ["container"]}, None, False)]
     cases.extend([

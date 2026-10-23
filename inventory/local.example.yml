@@ -1,5 +1,5 @@
 ---
-# Run Ansible directly on the Ubuntu 26.04 development/server VM.
+# Run Ansible directly on the Ubuntu 26.04, RHEL 10 or Fedora 43/44 development/server VM.
 # Copy manually to inventory/hosts.yml; no SSH or Docker is used.
 all:
   children:

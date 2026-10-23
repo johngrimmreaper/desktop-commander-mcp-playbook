@@ -1,3 +1,34 @@
+# Deployment validation
+
+## Provisional RHEL 10 / Fedora 43-44 support (2026-10-23)
+
+The Ansible role now selects APT on Ubuntu 26.04, DNF4 on RHEL 10, and DNF5
+on Fedora 43/44. RPM dependency names are explicitly listed rather than
+translated through guessed package aliases. RHEL ripgrep must be installed or
+available from previously enabled trusted repositories; no subscriptions,
+EPEL configuration or SELinux policy are changed automatically. The role
+uses the system Python as the systemd entrypoint for RPM systems and applies
+standard SELinux file contexts to managed files when SELinux is enabled.
+
+**These RPM targets are not yet fully validated.** No RHEL or Fedora VM was
+available during this change. Successful synthetic fact, source, lint and
+syntax checks **do not demonstrate that installation, DNF operations, native
+Node dependencies, SELinux Enforcing activation or tunnel connectivity work
+on real RHEL/Fedora machines**. Actual integration requires authorized VM
+access and will be reported separately. Ubuntu 26.04 is the only system
+with proven end-to-end installation and MCP/systemd tests so far.
+
+On an Ubuntu test VM the synthetic Ansible guard accepted RHEL 10.0/10.1 and Fedora
+43/44, and rejected RHEL 9, Debian 13, Fedora 45 beta, Ubuntu 24.04 and
+container cases (24 total cases). The Ansible playbook syntax, Ruff,
+ansible-lint and all 41 unit tests passed. Templates were rendered with
+synthetic Ubuntu, RedHat and Fedora facts to confirm the expected systemd
+ExecStart and configurable user. Two native Ubuntu install/idempotence runs
+both had `changed=0`, with production configuration, release selector and
+service state preserved.
+
+Ubuntu's stable production service was not restarted while adding RPM support.
+
 # Native Ubuntu 26.04 validation
 
 ## Explicit runtime-account selection validation (2026-10-22)
@@ -77,7 +108,8 @@ Subsequent license and documentation changes did not alter the tested code.
 | Production process HOME | /var/lib/desktop-commander-mcp/home, mcp_operator-owned, mode 0700 |
 | Production working directory | /home/mcp_operator |
 
-Ubuntu 26.04 is the only maintained deployment/validation target.
+At the time of this historical validation, Ubuntu 26.04 was the only
+deployment target. New RPM targets are provisional as documented above.
 The Ubuntu 24.04 rejection test used synthetic Ansible facts on ubuntu-test-vm;
 it did not run a workload on Ubuntu 24.04.
 
