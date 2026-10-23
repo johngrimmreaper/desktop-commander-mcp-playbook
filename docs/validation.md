@@ -1,5 +1,28 @@
 # Deployment validation
 
+## Native RHEL passive monitoring and audit (2026-10-23)
+
+Validated directly on `rhel-test-vm`, native RHEL 10.2 x86_64,
+SELinux `Enforcing`. The existing production MCP daemon was **not restarted or
+upgraded**; its main PID remained unchanged before, during and after testing.
+
+| Check | Observed result |
+| --- | --- |
+| Stricter doctor | Readiness uses the installed, root-owned managed-listener checker rather than an arbitrary HTTP 200 |
+| Native read-only audit | Release selector, pin/manifest match, runtime identity, release-only preflight, active-config preflight and managed health all passed |
+| Monitor enable | `ok=21 changed=4 failed=0`, installed systemd service/timer and root-owned doctor helper |
+| systemd and SELinux | Rendered monitoring units passed `systemd-analyze verify`; files relabeled under SELinux Enforcing |
+| Monitor oneshot | Manual `systemctl start desktop-commander-mcp-health.service` completed with `healthy: true` in journald |
+| Repeated enable | `ok=21 changed=0 failed=0`, fully idempotent |
+| Monitor disable | `ok=16 changed=2 failed=0`, timer/service/helper removed; timer `not-found` afterward |
+| Production remained untouched | Unchanged main PID, service `active`, doctor `healthy: true`, SELinux `Enforcing` |
+| Strict inventory parsers | Normal and detached inventory validators accept the private local inventory; regressions reject duplicate keys/aliases/merges |
+
+Monitoring was **not left enabled** after the test. It is an explicit opt-in
+feature, currently logging only to systemd's journal; there is no automatic
+restart or external alert delivery. Fedora and arm64 integration tests remain
+unverified.
+
 ## Maintenance validation (2026-10-23)
 
 On RHEL 10.2, the independent `.venv/bin/python scripts/check.py` runner
