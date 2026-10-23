@@ -559,7 +559,8 @@ Run as the configured runtime user, directly from the checkout:
 ```
 
 The doctor checks systemd status, the selected immutable release, runtime
-identity, configuration file ownership/modes, loopback-only readiness, the MCP
+identity, configuration file ownership/modes, managed-process-owned loopback
+readiness (using the installed root-owned readiness helper), the MCP
 child process and SELinux status. It never starts, stops or changes anything,
 never needs sudo, and never prints API keys, tunnel IDs or configuration
 contents. HTTP checks are restricted to the configured `127.0.0.1` health

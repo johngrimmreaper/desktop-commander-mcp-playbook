@@ -28,7 +28,7 @@ class DoctorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "tunnel.yaml"
             for addr, expect in (("127.0.0.1:8787", "127.0.0.1:8787"),
-                                 ("127.0.0.1:1", "127.0.0.1:1"),
+                                 ("127.0.0.1:1", None),
                                  ("0.0.0.0:8787", None),
                                  ("api.openai.com:443", None),
                                  ("127.0.0.1:99999", None),
@@ -37,6 +37,25 @@ class DoctorTests(unittest.TestCase):
                 self.assertEqual(doctor.health_address(path), expect)
             path.write_text("api_key: sk-example\nhealth: [invalid")
             self.assertIsNone(doctor.health_address(path))
+
+    def test_owned_readiness_fails_closed_on_missing_or_untrusted_helper(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "readiness.py"
+            path.write_text("print('ready')\n")
+            path.chmod(0o666)
+            with (mock.patch.object(doctor, "READINESS", path),
+                  mock.patch.object(doctor, "probe") as probe):
+                self.assertFalse(doctor.managed_readiness("127.0.0.1:8787"))
+                probe.assert_not_called()
+            path.unlink()
+            with mock.patch.object(doctor, "READINESS", path):
+                self.assertFalse(doctor.managed_readiness("127.0.0.1:8787"))
+
+    def test_diagnostics_use_managed_checker_not_arbitrary_http_200(self):
+        with mock.patch.object(doctor, "managed_readiness", return_value=False):
+            self.assertFalse(doctor.managed_readiness("127.0.0.1:8787"))
+        self.assertNotIn("urllib", Path(doctor.__file__).read_text())
+        self.assertIn("--listen-addr", Path(doctor.__file__).read_text())
 
     def test_diagnostics_only_emit_boolean_or_known_selinux_status(self):
         with (mock.patch.object(doctor, "unit_state", return_value={

@@ -8,11 +8,10 @@ import re
 import stat
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 
 import yaml
 
+READINESS = Path("/usr/local/libexec/desktop-commander-mcp/readiness.py")
 PREFIX = Path("/opt/desktop-commander-mcp")
 HOME = Path("/var/lib/desktop-commander-mcp/home")
 SERVICE = "desktop-commander-mcp.service"
@@ -65,25 +64,25 @@ def health_address(config):
         document = yaml.safe_load(config.read_bytes())
         address = document["health"]["listen_addr"]
         match = re.fullmatch(r"127\.0\.0\.1:([1-9][0-9]{0,4})", address)
-        if match and 1 <= int(match.group(1)) <= 65535:
+        if match and 1024 <= int(match.group(1)) <= 65535:
             return address
     except (OSError, TypeError, KeyError, ValueError, yaml.YAMLError):
         pass
     return None
 
 
-class LocalOnlyRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, request, fp, code, msg, headers, newurl):
-        return None
-
-
-def healthy(address):
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), LocalOnlyRedirect())
+def managed_readiness(address):
+    """Use the installed checker: HTTP 200 from an unrelated process is not health."""
     try:
-        with opener.open("http://" + address + "/readyz", timeout=3) as response:
-            return response.status == 200 and response.read(32).strip() == b"ready"
-    except (OSError, ValueError, urllib.error.URLError):
+        info = READINESS.lstat()
+        # The helper must have been installed by the role, not a symlink or
+        # arbitrary user-writable script supplied from an untrusted directory.
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            return False
+    except OSError:
         return False
+    return probe(["/usr/bin/python3", str(READINESS), "--unit", SERVICE,
+                  "--listen-addr", address]) is not None
 
 
 def child_running(group):
@@ -127,7 +126,7 @@ def diagnose():
     checks["private_config"] = bool(uid is not None and all(private_file(p, uid) for p in files))
     addr = health_address(files[0]) if checks["private_config"] else None
     checks["loopback_health_config"] = addr is not None
-    checks["readiness"] = bool(addr and healthy(addr))
+    checks["readiness"] = bool(addr and managed_readiness(addr))
     checks["mcp_child"] = bool(unit and child_running(unit.get("ControlGroup", "")))
     selinux = probe(["getenforce"])
     # Ubuntu need not provide the getenforce command. RHEL must keep enforcing.
