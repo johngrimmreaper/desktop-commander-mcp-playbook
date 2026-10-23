@@ -1,5 +1,6 @@
 ---
-dcmcp_user: mcp_operator
+# REQUIRED: set dcmcp_user explicitly in an untracked local inventory.
+# Never infer it from the Ansible connection account or default to mcp_operator/root.
 # A dedicated process HOME avoids sharing config/caches with interactive MCP clients.
 # The account and its existing sudo rights remain unchanged.
 dcmcp_home: /var/lib/desktop-commander-mcp/home

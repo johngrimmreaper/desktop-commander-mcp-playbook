@@ -1,4 +1,15 @@
 ---
+# This guard MUST run before any host-dependent task or installation mutation.
+# An unset/empty value is not replaced by the SSH/login/Ansible user.
+- name: Require explicit runtime account selection in the private inventory
+  ansible.builtin.assert:
+    that:
+      - dcmcp_user | default('', true) is match('^[a-z_][a-z0-9_-]*$')
+    fail_msg: >-
+      Set dcmcp_user to an existing non-root Linux account in your
+      untracked inventory/hosts.yml before running any playbook.
+      No default or automatic account selection is allowed.
+
 - name: Require the supported native Ubuntu systemd baseline
   ansible.builtin.assert:
     that:
@@ -11,7 +22,6 @@
       - ansible_version['full'] is version('2.21', '>=')
       - ansible_version['full'] is version('2.22', '<')
       - not ansible_check_mode
-      - dcmcp_user is match('^[a-z_][a-z0-9_-]*$')
       - dcmcp_home == '/var/lib/desktop-commander-mcp/home'
       - dcmcp_prefix == '/opt/desktop-commander-mcp'
       - dcmcp_helpers == '/usr/local/libexec/desktop-commander-mcp'

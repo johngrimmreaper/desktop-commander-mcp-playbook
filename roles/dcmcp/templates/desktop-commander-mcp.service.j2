@@ -32,7 +32,7 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=desktop-commander-mcp
 # Native host daemon; no Docker/Podman dependency or container namespace.
-# The existing mcp_operator sudo capabilities are preserved.
+# The configured runtime account retains its existing Linux/sudo privileges.
 # No NoNewPrivileges/ProtectSystem/sudoers changes are introduced.
 
 [Install]

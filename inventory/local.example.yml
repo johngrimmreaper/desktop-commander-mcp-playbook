@@ -8,6 +8,8 @@ all:
         localhost:
           ansible_connection: local
           ansible_python_interpreter: /usr/bin/python3
-          dcmcp_user: mcp_operator
+          # REQUIRED: uncomment and manually enter your existing Linux user.
+          # This template intentionally has no default account.
+          # dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT
           # Default working directory: the existing account's passwd home.
           # Process HOME is /var/lib/desktop-commander-mcp/home.

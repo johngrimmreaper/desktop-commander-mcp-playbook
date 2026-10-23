@@ -388,7 +388,8 @@ def validate(ctx, release=None, check_port=False, runner=probe):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--user", default="mcp_operator")
+    parser.add_argument("--user", required=True,
+                        help="Explicit existing Linux runtime account (no default)")
     parser.add_argument("--workdir")
     parser.add_argument("--home", default="/var/lib/desktop-commander-mcp/home",
                         help="Process HOME; override only for isolated offline test fixtures")

@@ -5,8 +5,11 @@ all:
       hosts:
         ubuntu_mcp:
           ansible_host: REPLACE_WITH_SERVER_ADDRESS
-          ansible_user: mcp_operator
+          # SSH account (may differ from the MCP runtime account).
+          ansible_user: REPLACE_WITH_SSH_USER
+          # REQUIRED: uncomment and set the account for the MCP service.
+          # dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT
           # Native Ubuntu 26.04 only; no Docker runtime dependency.
           # Existing sudo only; pass --ask-become-pass if the host requires it.
           # ansible_become_password belongs in Ansible Vault, never here.
-          # dcmcp_workdir: /home/mcp_operator/Projects
+          # dcmcp_workdir: /home/REPLACE_WITH_EXISTING_LINUX_ACCOUNT/Projects
