@@ -1,5 +1,24 @@
 # Deployment validation
 
+## Arch Linux / Omarchy compatibility preparation (2026-10-23)
+
+An initial Arch backend is implemented through pinned
+`community.general.pacman` (13.5.0) rather than a custom pacman wrapper.
+The Ansible guard now accepts `Archlinux` on native systemd hosts, and
+`/etc/os-release` with `ID=arch` is accepted by the read-only native test
+selector. The package task uses `state: present` with `update_cache: false`
+and does not enable `upgrade`; repository/database refresh and full rolling
+system updates remain explicitly outside this playbook. The Arch service
+launcher invokes `/usr/bin/python3`, and no SELinux RPM-specific relabeling
+is attempted. Omarchy preparation instructions are in `docs/omarchy.md`.
+
+**Evidence:** Offline unit tests, Ansible syntax checks, Ruff, ansible-lint
+and synthetic Arch host-fact acceptance passed on the RHEL controller.
+`community.general.pacman` 13.5.0 was installed on the controller and
+resolved by `ansible-doc`. **No native Arch/Omarchy deployment, pacman
+transaction, immutable release build or live tunnel test has been performed**
+on an Arch VM. Support is provisional until the planned VM test.
+
 ## Native RHEL passive monitoring and audit (2026-10-23)
 
 Validated directly on `rhel-test-vm`, native RHEL 10.2 x86_64,

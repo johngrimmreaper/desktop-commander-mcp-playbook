@@ -2,7 +2,8 @@
 
 Ansible automation for installing the open-source
 [Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) on
-native Ubuntu 26.04, RHEL 10 or Fedora 43/44 and running it as a stdio
+native Ubuntu 26.04, RHEL 10, Fedora 43/44 or Arch Linux (including
+Omarchy) and running it as a stdio
 child of the official OpenAI client.
 A single systemd service keeps the server available to the OpenAI backend;
 desktop and mobile devices use ChatGPT. The mobile device does not run or
@@ -23,7 +24,7 @@ grant that access.
 
 | Component | Baseline |
 | --- | --- |
-| Host | Native Ubuntu 26.04 LTS, RHEL 10 or Fedora 43/44; systemd, VM or physical host |
+| Host | Native Ubuntu 26.04 LTS, RHEL 10, Fedora 43/44 or Arch Linux/Omarchy rolling; systemd, VM or physical host |
 | Architecture | x86_64/amd64 or aarch64/arm64, glibc |
 | Runtime user | **Required manual `dcmcp_user` in untracked inventory; no default or automatic selection** |
 | Controller | Validated locally on Ubuntu 26.04 (Python 3.14) and RHEL 10.2 (Python 3.12), ansible-core 2.21.5; SSH targeting is supported |
@@ -31,6 +32,7 @@ grant that access.
 | Node.js | 24.21.0, installed privately in the versioned release bundle |
 | tunnel-client | 0.0.16, official Linux bundle with a pinned checksum |
 | Lint | ansible-lint 26.9.0; dependencies in requirements-dev.txt |
+| Ansible collection | `community.general` 13.5.0, pinned in `collections/requirements.yml` for the Arch pacman backend |
 
 The role never creates users, groups or sudoers rules. The operator MUST
 select `dcmcp_user` in an ignored local inventory before **any** playbook can
@@ -50,8 +52,8 @@ The host guard rejects unsupported distribution releases, container targets
 and architectures before installing anything. Native Ubuntu 26.04 on x86_64
 has been integration-tested on an Ubuntu test VM. **RHEL 10.2 x86_64 was installed,
 preflighted, activated and verified end-to-end through ChatGPT on a native VM
-with SELinux Enforcing (2026-10-23).** Fedora 43/44 and arm64 have not had
-native end-to-end validation. These results are host-specific, not blanket
+with SELinux Enforcing (2026-10-23).** Fedora 43/44, Arch Linux/Omarchy
+rolling, and arm64 have not had native end-to-end validation. These results are host-specific, not blanket
 production certification.
 See [validation status](docs/validation.md).
 
@@ -98,6 +100,7 @@ sudo apt-get update
 sudo apt-get install -y python3-venv
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/ansible-galaxy collection install -r collections/requirements.yml
 cp -n inventory/local.example.yml inventory/hosts.yml
 vi inventory/hosts.yml    # REQUIRED: replace the dcmcp_user placeholder
 .venv/bin/python scripts/validate-inventory.py  # Fail early on malformed YAML/zero hosts
@@ -254,6 +257,28 @@ The installation's final message shows RELEASE_ID. Running install again reuses
 that bundle if its manifest has the same pins, without rebuilding or changing
 the active version. Different pins under the same ID cause a failure instead
 of overwriting code.
+
+### Arch Linux / Omarchy (rolling, awaiting native VM integration)
+
+Omarchy currently identifies as Arch Linux (`ID=arch` in `/etc/os-release`),
+which Ansible maps to the `Archlinux` distribution fact. There is no separate
+Omarchy-specific package manager or Hyprland dependency for this headless MCP
+service. The role uses the official `community.general.pacman` module. See
+[Omarchy deployment notes](docs/omarchy.md) for the operator's VM checklist.
+
+**Before deployment**, review Arch/Omarchy update news and finish a normal full
+system update **as a separate, operator-controlled maintenance action**:
+
+```bash
+sudo pacman -Syu
+```
+
+The playbook never refreshes pacman sync databases or performs a system
+upgrade. It uses `state: present`, `update_cache: false`, and leaves `upgrade`
+at its default `false` against the existing pacman databases. Omarchy's AUR
+helpers, desktop services, package sources and update cadence remain untouched. Do not
+use `pacman -Sy` as a workaround for missing dependencies; Arch does not
+support partial upgrades. First native Omarchy VM deployment is not yet proven.
 
 ## 2. MANUALLY copy and edit the active files
 
@@ -580,7 +605,7 @@ listener, without redirects or proxies. Its exit code is 0 when the runtime
 checks pass and 1 if unhealthy. This is a local health check, not proof that
 ChatGPT is able to invoke every tool through the OpenAI control plane.
 
-## Native read-only installed-release audit (Ubuntu, RHEL, Fedora)
+## Native read-only installed-release audit (Ubuntu, RHEL, Fedora, Arch)
 
 After successful activation on a supported native Linux host, run as the
 **same existing non-root account** that owns the service, without sudo:
