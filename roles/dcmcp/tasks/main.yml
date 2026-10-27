@@ -22,7 +22,8 @@
       - |
         import pathlib, stat, sys
         uid = int(sys.argv[1])
-        home = pathlib.Path(sys.argv[2])
+        tunnel_home = pathlib.Path(sys.argv[2])
+        account_home = pathlib.Path(sys.argv[3])
         groups = {
             0: [
                 pathlib.Path("/opt/desktop-commander-mcp"),
@@ -33,10 +34,10 @@
                 pathlib.Path("/var/lib/desktop-commander-mcp"),
             ],
             uid: [
-                home,
-                home / ".config",
-                home / ".config/desktop-commander-mcp",
-                home / ".claude-server-commander",
+                tunnel_home,
+                tunnel_home / ".config",
+                tunnel_home / ".config/desktop-commander-mcp",
+                account_home / ".claude-server-commander",
             ],
         }
         for owner, paths in groups.items():
@@ -50,6 +51,7 @@
                         raise SystemExit("An installation/config path has an unexpected type/owner")
       - "{{ dcmcp_uid }}"
       - "{{ dcmcp_home }}"
+      - "{{ dcmcp_account_home }}"
   changed_when: false
 
 - name: Install distribution-specific OS dependencies
@@ -70,7 +72,7 @@
     - /var/cache/desktop-commander-mcp
     - /var/lib/desktop-commander-mcp
 
-- name: Create the dedicated process home for the existing runtime user
+- name: Create the dedicated tunnel-client home for the existing runtime user
   ansible.builtin.file:
     path: "{{ dcmcp_home }}"
     state: directory
@@ -102,7 +104,7 @@
     mode: "0700"
   loop:
     - "{{ dcmcp_config_dir }}"
-    - "{{ dcmcp_home }}/.claude-server-commander"
+    - "{{ dcmcp_account_home }}/.claude-server-commander"
 
 - name: Require an existing runtime working directory
   ansible.builtin.stat:

@@ -91,13 +91,13 @@ modules per architecture was not verified by the connector, which cannot
 download binaries. Ansible therefore builds the pinned source on the target
 to obtain architecture-specific native modules with the lockfile's hashes.
 
-The native daemon runs as the existing mcp_operator account with
-HOME=/var/lib/desktop-commander-mcp/home. Its working directory defaults to the
-account's passwd home. The dedicated process home prevents config/cache
-collisions with Remote Desktop Commander or interactive MCP clients using
-the same UID; it adds no users or sudoers restrictions. This follows
-os.homedir() in the inspected Node source. Native tests verify that the
-daemon and fixture use their explicit HOME.
+The native tunnel client runs as the existing account with
+HOME=/var/lib/desktop-commander-mcp/home for its credentials and state.
+The MCP child launcher overrides HOME with the account's real passwd home,
+and the working directory defaults there. Desktop Commander therefore
+shares that user's configuration and caches; it does not create a separate
+Linux identity or sudoers policy. The distinction follows os.homedir() in
+the inspected Node source. Preflight validates both config locations.
 
 ## OpenAI tunnel-client
 

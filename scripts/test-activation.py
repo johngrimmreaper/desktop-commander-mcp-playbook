@@ -46,7 +46,7 @@ def properties(unit):
 def production_snapshot():
     paths = [HOME / ".config/desktop-commander-mcp/tunnel.yaml",
              HOME / ".config/desktop-commander-mcp/runtime.key",
-             HOME / ".claude-server-commander/config.json"]
+             Path(pwd.getpwuid(os.getuid()).pw_dir) / ".claude-server-commander/config.json"]
     files = {}
     for path in paths:
         if not path.exists():
@@ -99,9 +99,10 @@ def main():
                PYTHONDONTWRITEBYTECODE="1")
     unrelated = None
     try:
-        home = root / "home"
+        home = root / "tunnel-home"
+        account_home = root / "account-home"
         tunnel = home / ".config/desktop-commander-mcp/tunnel.yaml"
-        desktop = home / ".claude-server-commander/config.json"
+        desktop = account_home / ".claude-server-commander/config.json"
         tunnel.parent.mkdir(parents=True, mode=0o700)
         desktop.parent.mkdir(mode=0o700)
         with socket.socket() as listener:
@@ -120,7 +121,8 @@ def main():
             path.chmod(0o600)
         # Validate the real installed candidate first, without contacting OpenAI.
         run(["/usr/bin/python3", str(HELPERS / "preflight.py"), "--user", account.pw_name,
-             "--home", str(home), "--release", str(release)], env=dict(env, HOME=str(home)))
+             "--home", str(home), "--account-home", str(account_home),
+             "--release", str(release)], env=dict(env, HOME=str(home)))
         isolated = root / "installation"
         candidate = isolated / "releases" / release.name
         run(["sudo", "-n", "mkdir", "-p", str(candidate)])
@@ -145,7 +147,7 @@ def main():
             if task.get("register") == "dcmcp_fingerprint":
                 argv = task["ansible.builtin.command"]["argv"]
                 argv[-2] = str(release)
-                argv += ["--home", str(home)]
+                argv += ["--home", str(home), "--account-home", str(account_home)]
             for child in task.get("block", []) + task.get("rescue", []):
                 if child.get("name") in ("Atomically select the validated release",
                                          "Restore the previous release selector if one existed"):

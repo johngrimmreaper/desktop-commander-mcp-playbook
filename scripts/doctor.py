@@ -115,16 +115,22 @@ def diagnose():
                              and int(unit["MainPID"]) > 0)
     checks["release"] = selected_release() is not None
     uid = None
+    account_home = None
     if unit and unit.get("User"):
         try:
-            uid = pwd.getpwnam(unit["User"]).pw_uid
+            account = pwd.getpwnam(unit["User"])
+            uid = account.pw_uid
+            account_home = Path(account.pw_dir)
         except KeyError:
             pass
     checks["runtime_user"] = uid is not None and uid > 0
-    files = (CONFIG_DIR / "tunnel.yaml", CONFIG_DIR / "runtime.key",
-             HOME / ".claude-server-commander/config.json")
-    checks["private_config"] = bool(uid is not None and all(private_file(p, uid) for p in files))
-    addr = health_address(files[0]) if checks["private_config"] else None
+    tunnel_files = (CONFIG_DIR / "tunnel.yaml", CONFIG_DIR / "runtime.key")
+    desktop_config = (account_home / ".claude-server-commander/config.json"
+                      if account_home is not None else None)
+    checks["private_config"] = bool(
+        uid is not None and desktop_config is not None
+        and all(private_file(p, uid) for p in (*tunnel_files, desktop_config)))
+    addr = health_address(tunnel_files[0]) if checks["private_config"] else None
     checks["loopback_health_config"] = addr is not None
     checks["readiness"] = bool(addr and managed_readiness(addr))
     checks["mcp_child"] = bool(unit and child_running(unit.get("ControlGroup", "")))

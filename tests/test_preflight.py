@@ -32,11 +32,14 @@ class PreflightTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="dcmcp-test-")
         self.addCleanup(self.temporary.cleanup)
         root = Path(self.temporary.name)
-        home = root / "home"
-        home.mkdir(mode=0o700)
-        self.ctx = pf.Context(pwd.getpwuid(os.geteuid()).pw_name, os.geteuid(), home, home,
+        tunnel_home = root / "tunnel-home"
+        account_home = root / "account-home"
+        tunnel_home.mkdir(mode=0o700)
+        account_home.mkdir(mode=0o700)
+        self.ctx = pf.Context(pwd.getpwuid(os.geteuid()).pw_name, os.geteuid(),
+                              tunnel_home, tunnel_home, account_home,
                               root / "installation", root / "helpers", root / "unit.service")
-        self.env = patch.dict(os.environ, {"HOME": str(home)})
+        self.env = patch.dict(os.environ, {"HOME": str(tunnel_home)})
         self.env.start()
         self.addCleanup(self.env.stop)
         self.ctx.config.parent.mkdir(parents=True, mode=0o700)
@@ -133,10 +136,34 @@ class PreflightTests(unittest.TestCase):
         rendered = Environment().from_string(template).render(
             dcmcp_helpers=str(self.ctx.helpers), dcmcp_user=self.ctx.user,
             dcmcp_uid=self.ctx.uid, dcmcp_home=str(self.ctx.home),
-            dcmcp_workdir=str(self.ctx.workdir))
+            dcmcp_workdir=str(self.ctx.workdir),
+            dcmcp_account_home=str(self.ctx.account_home))
         compile(rendered, "rendered-run", "exec")
         example = (ROOT / "roles/dcmcp/templates/desktop-commander.json.example.j2").read_bytes()
         pf.validate_desktop(pf.parse_json(example))
+
+    def test_rendered_mcp_child_uses_passwd_home_and_valid_shell(self):
+        import shlex
+        import subprocess
+        from jinja2 import Environment
+        engine = Environment()
+        engine.filters["quote"] = shlex.quote
+        template = (ROOT / "roles/dcmcp/templates/mcp-child.j2").read_text()
+        rendered = engine.from_string(template).render(
+            dcmcp_home=str(self.ctx.home), dcmcp_account_home=str(self.ctx.account_home),
+            dcmcp_user=self.ctx.user, dcmcp_uid=self.ctx.uid,
+            dcmcp_prefix=str(self.ctx.prefix))
+        self.assertIn("export HOME=" + shlex.quote(str(self.ctx.account_home)), rendered)
+        self.assertIn(f"export XDG_RUNTIME_DIR=/run/user/{self.ctx.uid}", rendered)
+        self.assertIn(f"unix:path=/run/user/{self.ctx.uid}/bus", rendered)
+        result = subprocess.run(["/bin/sh", "-n"], input=rendered, text=True,
+                                capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_desktop_config_uses_passwd_home_not_tunnel_home(self):
+        self.assertEqual(self.ctx.account_home / ".claude-server-commander/config.json",
+                         self.ctx.desktop_config)
+        self.assertNotEqual(self.ctx.home, self.ctx.account_home)
 
     def test_complete_offline_preflight_and_repeat_are_stable(self):
         first = self.validate()
@@ -315,7 +342,7 @@ class PreflightTests(unittest.TestCase):
         sentinel = "sk-DO_NOT_LOG_THIS_SECRET_VALUE"
         self.write(self.ctx.config, "api_key: [" + sentinel, 0o600)
         error_output = io.StringIO()
-        account = SimpleNamespace(pw_uid=self.ctx.uid, pw_dir=str(self.ctx.home))
+        account = SimpleNamespace(pw_uid=self.ctx.uid, pw_dir=str(self.ctx.account_home))
         with patch.object(sys, "argv", ["preflight.py", "--user", self.ctx.user, "--home", str(self.ctx.home)]), \
                 patch.object(pf.pwd, "getpwnam", return_value=account), \
                 patch("sys.stderr", error_output):

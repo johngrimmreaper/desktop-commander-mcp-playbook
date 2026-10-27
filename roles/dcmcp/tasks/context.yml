@@ -76,7 +76,7 @@
       - dcmcp_config_dir == dcmcp_home + '/.config/desktop-commander-mcp'
       - dcmcp_tunnel_config == dcmcp_config_dir + '/tunnel.yaml'
       - dcmcp_runtime_key == dcmcp_config_dir + '/runtime.key'
-      - dcmcp_desktop_config == dcmcp_home + '/.claude-server-commander/config.json'
+      - dcmcp_desktop_config == dcmcp_account_home + '/.claude-server-commander/config.json'
       - dcmcp_examples == '/usr/local/share/desktop-commander-mcp'
       - dcmcp_release_id is match('^[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')
       - dcmcp_target_release is match('^[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')

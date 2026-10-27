@@ -33,11 +33,12 @@ its mode exactly 0600; its immediate parent and the two config directories must
 be owned by {{ dcmcp_user }} and mode 0700. Do not put credentials in inventory,
 extra-vars, shell history or process command lines.
 
-Runtime process home: {{ dcmcp_home }}. Working directory: {{ dcmcp_workdir }}.
-This dedicated HOME belongs to the existing {{ dcmcp_user }} account and keeps
-the daemon's config/caches separate from interactive Desktop Commander clients.
-Desktop Commander determines its real config path from process HOME, regardless
-of WorkingDirectory.
+Tunnel-client HOME: {{ dcmcp_home }} (private credentials and state).
+Desktop Commander MCP child HOME: {{ dcmcp_account_home }}.
+Working directory: {{ dcmcp_workdir }}.
+The MCP child inherits the selected account's home-based configuration and, when
+present, its XDG runtime directory and user D-Bus socket. Desktop Commander reads
+{{ dcmcp_desktop_config }} from its own HOME, not the tunnel-client HOME.
 
 Run preflight as the runtime user, then activate through the activation playbook.
 No daemon, MCP handshake, or network call is started by the local preflight.

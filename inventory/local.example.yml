@@ -12,4 +12,4 @@ all:
           # REQUIRED: replace the placeholder with an existing non-root Linux user.
           # Spaces only; align dcmcp_user with the two settings above.
           # Default working directory: the existing account's passwd home.
-          # Process HOME is /var/lib/desktop-commander-mcp/home.
+          # Tunnel HOME is private; Desktop Commander uses this account's passwd home.

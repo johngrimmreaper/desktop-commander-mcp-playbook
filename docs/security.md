@@ -17,10 +17,11 @@ Desktop Commander MCP as a native systemd service. It is **not a sandbox**.
   upstream restrictions and/or a dedicated less-privileged Linux account if
   narrower access is required. Review the implications before assigning an
   administrative account to a tunnel.
-- The runtime's process `HOME` is private and separate from the interactive
-  account's home, but the default working directory is the user's existing
-  home. A separate `HOME` does not isolate permissions or prevent access to
-  files the Linux identity can ordinarily read.
+- The tunnel client has a private `HOME` for its credentials and state. The
+  Desktop Commander MCP child uses the selected account's real home and
+  home-based configuration; the working directory defaults there as well.
+  Sharing the account's home does not isolate MCP permissions from other
+  processes using the same Linux identity.
 
 ## Control plane and secrets
 

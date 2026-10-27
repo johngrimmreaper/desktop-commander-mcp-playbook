@@ -62,13 +62,14 @@ See [validation status](docs/validation.md).
 The desktop-commander-mcp.service unit runs a launcher that holds a local lock,
 performs offline preflight and then executes tunnel-client run --config.
 The official client starts mcp-child, which uses exec to run dist/index.js with
---no-onboarding. The unit runs as the manually selected `dcmcp_user` with
-process HOME set to /var/lib/desktop-commander-mcp/home and WorkingDirectory
-set by default to that account's real home from `/etc/passwd`. Desktop
-Commander stores its config under
-that process HOME. This keeps the daemon's config/caches separate from the
-Remote Desktop Commander application and interactive MCP clients. The user
-retains access to its normal home, Docker and sudo according to Linux permissions.
+--no-onboarding. The unit runs as the manually selected `dcmcp_user`. The
+tunnel client keeps HOME=/var/lib/desktop-commander-mcp/home for its private
+credentials and state. The MCP child instead exports the selected account's
+real home from `/etc/passwd` as HOME, so Desktop Commander uses the same
+home-based configuration as that Linux user. WorkingDirectory also defaults to
+the account's real home. The child receives the user's XDG runtime directory
+and D-Bus session address when their sockets exist. Existing filesystem,
+Docker and sudo permissions are unchanged.
 
 Its stdin/stdout connect to the tunnel exclusively for MCP
 frames; stderr and daemon logs go to the journal.
@@ -144,10 +145,9 @@ changes anything. Neither the login account nor a built-in default is used as
 a fallback. No users, groups or sudo rules are created.
 
 `dcmcp_user` is the account that runs the MCP systemd service and owns its
-private configuration. It is independent of `ansible_user`, the SSH login
-for Ansible. The process HOME remains the private fixed location described
-below, while the default working directory comes from the selected account's
-passwd home directory.
+private tunnel configuration. It is independent of `ansible_user`, the SSH
+login for Ansible. The tunnel client's HOME remains private; the MCP child's
+HOME and default working directory use the selected account's passwd home.
 
 The local inventory uses `ansible_connection: local` and `/usr/bin/python3`;
 no SSH or Docker is required. Installation needs the controller's existing
@@ -289,19 +289,19 @@ The role creates private directories but **never copies examples into these acti
 | --- | --- |
 | /var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml | selected `dcmcp_user`, 0600 |
 | /var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/runtime.key | selected `dcmcp_user`, 0600 |
-| /var/lib/desktop-commander-mcp/home/.claude-server-commander/config.json | selected `dcmcp_user`, 0600 |
+| Selected account's home: `~/.claude-server-commander/config.json` | selected `dcmcp_user`, 0600 |
 | Both configuration directories | selected `dcmcp_user`, 0700 |
 
 The role creates /var/lib/desktop-commander-mcp/home owned by the
-configured `dcmcp_user`, with mode 0700. This is the daemon's process HOME,
-not the operator's login home.
-WorkingDirectory does not change Desktop Commander's configuration path.
+configured `dcmcp_user`, with mode 0700. This is the tunnel client's HOME,
+not Desktop Commander's HOME. The MCP child reads its configuration from the
+selected account's real home, regardless of WorkingDirectory.
 
 ```bash
 umask 077
 cp -n /usr/local/share/desktop-commander-mcp/tunnel.yaml.example "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml"
-cp -n /usr/local/share/desktop-commander-mcp/desktop-commander.json.example "/var/lib/desktop-commander-mcp/home/.claude-server-commander/config.json"
-chmod 600 "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml" "/var/lib/desktop-commander-mcp/home/.claude-server-commander/config.json"
+cp -n /usr/local/share/desktop-commander-mcp/desktop-commander.json.example "$HOME/.claude-server-commander/config.json"
+chmod 600 "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml" "$HOME/.claude-server-commander/config.json"
 vi "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml"
 ```
 
@@ -580,8 +580,9 @@ To rotate the key, deactivate, edit runtime.key manually while retaining mode
 deactivate stops the children and daemon and disables startup at boot.
 uninstall removes only this project's managed bundle/releases, cached downloads,
 helpers, examples, unit and fingerprint. It preserves the selected user, sudoers,
-Ubuntu dependencies, the entire daemon process home (including the three active files and keys),
-the account's home and working-directory data.
+Ubuntu dependencies, the private tunnel-client home (including its active
+tunnel configuration and key), the account's Desktop Commander configuration,
+and the account's home and working-directory data.
 
 Revoke the key/tunnel and remove the OpenAI connector when you stop using it.
 Disposal of preserved private files remains an operator's manual decision.

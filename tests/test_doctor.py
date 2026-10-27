@@ -2,6 +2,7 @@
 from pathlib import Path
 import os
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -56,6 +57,23 @@ class DoctorTests(unittest.TestCase):
             self.assertFalse(doctor.managed_readiness("127.0.0.1:8787"))
         self.assertNotIn("urllib", Path(doctor.__file__).read_text())
         self.assertIn("--listen-addr", Path(doctor.__file__).read_text())
+
+    def test_diagnostics_reads_desktop_config_from_account_home(self):
+        account = SimpleNamespace(pw_uid=os.getuid(), pw_dir="/home/example")
+        checked = []
+        def record(path, _uid):
+            checked.append(path)
+            return True
+        with (mock.patch.object(doctor, "unit_state", return_value={"User": "example"}),
+              mock.patch.object(doctor.pwd, "getpwnam", return_value=account),
+              mock.patch.object(doctor, "private_file", side_effect=record),
+              mock.patch.object(doctor, "health_address", return_value=None),
+              mock.patch.object(doctor, "selected_release", return_value=None),
+              mock.patch.object(doctor, "probe", return_value=None)):
+            result = doctor.diagnose()
+        self.assertTrue(result["private_config"])
+        self.assertIn(Path("/home/example/.claude-server-commander/config.json"), checked)
+        self.assertNotIn(doctor.HOME / ".claude-server-commander/config.json", checked)
 
     def test_diagnostics_only_emit_boolean_or_known_selinux_status(self):
         with (mock.patch.object(doctor, "unit_state", return_value={

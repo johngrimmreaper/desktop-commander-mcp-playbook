@@ -64,7 +64,7 @@ def main():
     home = Path('/var/lib/desktop-commander-mcp/home')
     paths = (home / ".config/desktop-commander-mcp/tunnel.yaml",
              home / ".config/desktop-commander-mcp/runtime.key",
-             home / ".claude-server-commander/config.json")
+             Path(account.pw_dir) / ".claude-server-commander/config.json")
     before = snapshot(paths)
     current = Path("/opt/desktop-commander-mcp/current")
     before_link = os.readlink(current) if current.is_symlink() else None

@@ -194,8 +194,12 @@ Subsequent license and documentation changes did not alter the tested code.
 | Python | 3.14.4 |
 | Controller/check tools | ansible-core 2.21.5, ansible-lint 26.9.0, Ruff 0.17.0, PyYAML 6.0.3 |
 | Native bundle | Desktop Commander 0.2.52, Node 24.21.0, tunnel-client 0.0.16 |
-| Production process HOME | /var/lib/desktop-commander-mcp/home, mcp_operator-owned, mode 0700 |
+| Tunnel-client HOME (historical deployment) | /var/lib/desktop-commander-mcp/home, mcp_operator-owned, mode 0700 |
 | Production working directory | /home/mcp_operator |
+
+This table records the original validation. The current installer keeps the
+tunnel-client HOME private but uses the selected account's passwd home for the
+Desktop Commander MCP child and its JSON configuration.
 
 At the time of this historical validation, Ubuntu 26.04 was the only
 deployment target. New RPM targets are provisional as documented above.

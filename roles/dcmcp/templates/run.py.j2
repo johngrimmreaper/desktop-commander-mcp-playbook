@@ -9,7 +9,7 @@ sys.path.insert(0, "{{ dcmcp_helpers }}")
 from preflight import Context, InvalidConfig, runtime_environment, validate
 
 ctx = Context("{{ dcmcp_user }}", {{ dcmcp_uid }}, Path("{{ dcmcp_home }}"),
-              Path("{{ dcmcp_workdir }}"))
+              Path("{{ dcmcp_workdir }}"), Path("{{ dcmcp_account_home }}"))
 try:
     lock = os.open("/run/desktop-commander-mcp/instance.lock",
                    os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)

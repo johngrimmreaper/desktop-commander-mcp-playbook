@@ -56,6 +56,7 @@ class Context:
     uid: int
     home: Path
     workdir: Path
+    account_home: Path
     prefix: Path = Path("/opt/desktop-commander-mcp")
     helpers: Path = Path("/usr/local/libexec/desktop-commander-mcp")
     unit: Path = Path("/etc/systemd/system/desktop-commander-mcp.service")
@@ -70,7 +71,7 @@ class Context:
 
     @property
     def desktop_config(self):
-        return self.home / ".claude-server-commander/config.json"
+        return self.account_home / ".claude-server-commander/config.json"
 
 
 def require(condition, message):
@@ -258,6 +259,7 @@ def validate_key(data):
 def runtime_environment(ctx, release):
     # Flags > environment > YAML upstream: build a clean, explicit environment.
     # The key is loaded natively by the tunnel only, and is not in the MCP child env.
+    # mcp-child sets its own HOME to the existing account home before exec.
     return {
         "HOME": str(ctx.home), "USER": ctx.user, "LOGNAME": ctx.user,
         "SHELL": "/bin/bash", "PATH": str(release / "node/bin") + ":/usr/local/bin:/usr/bin:/bin",
@@ -350,7 +352,7 @@ def validate_release(ctx, release, runner=probe):
 
 def validate_runtime_context(ctx):
     require(os.geteuid() == ctx.uid, "Run preflight as the configured runtime user, not root.")
-    require(os.environ.get("HOME") == str(ctx.home), "Process HOME does not match the runtime home.")
+    require(os.environ.get("HOME") == str(ctx.home), "Tunnel-client HOME does not match the private runtime home.")
     require(ctx.workdir.is_dir() and os.access(ctx.workdir, os.R_OK | os.W_OK | os.X_OK),
             "The working directory is missing or not accessible to the runtime user.")
 
@@ -392,7 +394,9 @@ def main():
                         help="Explicit existing Linux runtime account (no default)")
     parser.add_argument("--workdir")
     parser.add_argument("--home", default="/var/lib/desktop-commander-mcp/home",
-                        help="Process HOME; override only for isolated offline test fixtures")
+                        help="Tunnel-client HOME; override only for isolated offline test fixtures")
+    parser.add_argument("--account-home",
+                        help="Override passwd home only for isolated offline test fixtures")
     parser.add_argument("--release")
     parser.add_argument("--release-only", action="store_true",
                         help="Validate immutable artifacts without requiring active configuration")
@@ -402,7 +406,8 @@ def main():
     try:
         account = pwd.getpwnam(args.user)
         ctx = Context(args.user, account.pw_uid, absolute_path(args.home),
-                      absolute_path(args.workdir or account.pw_dir))
+                      absolute_path(args.workdir or account.pw_dir),
+                      absolute_path(args.account_home or account.pw_dir))
         if args.release_only:
             require(args.release and not args.fingerprint and not args.check_port,
                     "Release-only validation requires --release without activation options.")

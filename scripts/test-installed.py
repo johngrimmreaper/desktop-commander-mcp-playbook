@@ -134,7 +134,7 @@ def test_stdio(release, home, account):
 def test_missing_configuration(account, release):
     paths = (RUNTIME_HOME / ".config/desktop-commander-mcp/tunnel.yaml",
              RUNTIME_HOME / ".config/desktop-commander-mcp/runtime.key",
-             RUNTIME_HOME / ".claude-server-commander/config.json")
+             Path(account.pw_dir) / ".claude-server-commander/config.json")
     if any(path.exists() or path.is_symlink() for path in paths) or current_link() is not None:
         print("SKIP: production rejection checks; operator configuration/selection exists.")
         return
@@ -221,9 +221,10 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="dcmcp-native-") as directory:
             home = Path(directory)
+            account_home = home / "account-home"
             tunnel = home / ".config/desktop-commander-mcp/tunnel.yaml"
             key = tunnel.parent / "runtime.key"
-            desktop = home / ".claude-server-commander/config.json"
+            desktop = account_home / ".claude-server-commander/config.json"
             tunnel.parent.mkdir(parents=True, mode=0o700)
             desktop.parent.mkdir(mode=0o700)
             data = (EXAMPLES / "tunnel.yaml.example").read_text().replace(
@@ -234,7 +235,8 @@ def main():
             env = os.environ.copy()
             env["HOME"] = str(home)
             command = ["/usr/bin/python3", str(HELPERS / "preflight.py"), "--user", account.pw_name,
-                       "--home", str(home), "--workdir", account.pw_dir,
+                       "--home", str(home), "--account-home", str(account_home),
+                        "--workdir", account.pw_dir,
                        "--release", str(release), "--fingerprint"]
             run(command, expected=78, env=env)
             for path, content in fixtures.items():

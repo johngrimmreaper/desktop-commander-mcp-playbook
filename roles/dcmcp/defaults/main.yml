@@ -1,7 +1,8 @@
 ---
 # REQUIRED: set dcmcp_user explicitly in an untracked local inventory.
 # Never infer it from the Ansible connection account or default to mcp_operator/root.
-# A dedicated process HOME avoids sharing config/caches with interactive MCP clients.
+# The tunnel client keeps credentials/state under a dedicated HOME.
+# The MCP child uses the selected account's real passwd home and configuration.
 # The account and its existing sudo rights remain unchanged.
 dcmcp_home: /var/lib/desktop-commander-mcp/home
 dcmcp_workdir: "{{ dcmcp_account_home }}"
@@ -12,7 +13,7 @@ dcmcp_service: desktop-commander-mcp.service
 dcmcp_config_dir: "{{ dcmcp_home }}/.config/desktop-commander-mcp"
 dcmcp_tunnel_config: "{{ dcmcp_config_dir }}/tunnel.yaml"
 dcmcp_runtime_key: "{{ dcmcp_config_dir }}/runtime.key"
-dcmcp_desktop_config: "{{ dcmcp_home }}/.claude-server-commander/config.json"
+dcmcp_desktop_config: "{{ dcmcp_account_home }}/.claude-server-commander/config.json"
 
 # Version + source revision are explicit; no @latest, npx or floating branch.
 dcmcp_desktop_version: "0.3.1"
