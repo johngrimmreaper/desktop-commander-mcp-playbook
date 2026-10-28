@@ -11,13 +11,14 @@
     state: absent
   loop:
     - "/etc/systemd/system/{{ dcmcp_service }}"
-    - "{{ dcmcp_prefix }}"
+    - "{{ dcmcp_instance_dir }}"
     - "{{ dcmcp_helpers }}"
     - "{{ dcmcp_examples }}"
-    - /var/cache/desktop-commander-mcp
-    - /var/lib/desktop-commander-mcp/activation.sha256
+    - "{{ dcmcp_activation_stamp }}"
+    - "{{ dcmcp_state_dir }}"
 
-# Preserve /var/lib/desktop-commander-mcp/home, including manually created secrets.
+# Leave shared immutable releases and download caches intact for other accounts.
+# Preserve the selected user's home, including manually created credentials.
 - name: Reload systemd after uninstall
   ansible.builtin.systemd_service:
     daemon_reload: true

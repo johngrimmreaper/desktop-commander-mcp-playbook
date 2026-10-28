@@ -197,9 +197,11 @@ Subsequent license and documentation changes did not alter the tested code.
 | Tunnel-client HOME (historical deployment) | /var/lib/desktop-commander-mcp/home, mcp_operator-owned, mode 0700 |
 | Production working directory | /home/mcp_operator |
 
-This table records the original validation. The current installer keeps the
-tunnel-client HOME private but uses the selected account's passwd home for the
-Desktop Commander MCP child and its JSON configuration.
+This table records the original validation, not the new multiuser layout.
+The current installer uses the selected account's passwd home for both the
+tunnel client and Desktop Commander child. Units, helpers, release selectors,
+and activation fingerprints are per-user; new native integration validation
+of simultaneous same-host instances is still required.
 
 At the time of this historical validation, Ubuntu 26.04 was the only
 deployment target. New RPM targets are provisional as documented above.

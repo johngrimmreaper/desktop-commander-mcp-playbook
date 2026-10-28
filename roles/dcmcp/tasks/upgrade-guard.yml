@@ -12,7 +12,7 @@
 
 - name: Inspect the active versioned release selector
   ansible.builtin.stat:
-    path: "{{ dcmcp_prefix }}/current"
+    path: "{{ dcmcp_current }}"
     follow: false
   register: dcmcp_upgrade_current
 

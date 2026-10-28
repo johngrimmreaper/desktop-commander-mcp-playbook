@@ -43,7 +43,7 @@ def main():
     manifest_bytes = (release / "release.json").read_bytes()
     manifest = json.loads(manifest_bytes)
     damaged = PREFIX / "releases" / ("dcmcp-release-test-" + uuid.uuid4().hex)
-    current = PREFIX / "current"
+    current = PREFIX / "instances" / account.pw_name / "current"
     before = os.readlink(current) if current.is_symlink() else None
     env = dict(os.environ, ANSIBLE_CONFIG=str(ROOT / "ansible.cfg"),
                PYTHONDONTWRITEBYTECODE="1")

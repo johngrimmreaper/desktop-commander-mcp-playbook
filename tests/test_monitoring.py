@@ -13,8 +13,10 @@ class MonitoringTests(unittest.TestCase):
     def test_monitor_templates_are_passive_and_use_nonroot_runtime_identity(self):
         engine = Environment(undefined=StrictUndefined)
         variables = dict(dcmcp_user='alice', dcmcp_gid='1001',
-                         dcmcp_home='/var/lib/desktop-commander-mcp/home',
-                         dcmcp_helpers='/usr/local/libexec/desktop-commander-mcp')
+                         dcmcp_home='/home/alice',
+                         dcmcp_service='desktop-commander-mcp@alice.service',
+                         dcmcp_monitor_service='desktop-commander-mcp-health@alice.service',
+                         dcmcp_helpers='/usr/local/libexec/desktop-commander-mcp/alice')
         service = engine.from_string((ROLE / 'templates/desktop-commander-mcp-health.service.j2')
                                      .read_text()).render(**variables)
         timer = engine.from_string((ROLE / 'templates/desktop-commander-mcp-health.timer.j2')
@@ -23,7 +25,9 @@ class MonitoringTests(unittest.TestCase):
         self.assertIn('User=alice', service)
         self.assertIn('Group=1001', service)
         self.assertIn('NoNewPrivileges=true', service)
-        self.assertIn('ExecStart=/usr/bin/python3 /usr/local/libexec/desktop-commander-mcp/doctor.py --json', service)
+        self.assertIn('ExecStart=/usr/bin/python3 /usr/local/libexec/desktop-commander-mcp/alice/doctor.py --json --user alice', service)
+        self.assertIn('After=desktop-commander-mcp@alice.service', service)
+        self.assertIn('Unit=desktop-commander-mcp-health@alice.service', timer)
         self.assertIn('OnUnitActiveSec=5min', timer)
         self.assertIn('Persistent=false', timer)
         self.assertIn('WantedBy=timers.target', timer)
@@ -42,10 +46,10 @@ class MonitoringTests(unittest.TestCase):
             module = task.get('ansible.builtin.systemd_service', {})
             self.assertNotEqual(module.get('state'), 'restarted')
             if module.get('state') in ('started', 'stopped'):
-                self.assertIn(module.get('name'), ('desktop-commander-mcp-health.timer',
-                                                  'desktop-commander-mcp-health.service'))
+                self.assertIn(module.get('name'), ('{{ dcmcp_monitor_timer }}',
+                                                  '{{ dcmcp_monitor_service }}'))
                 if module.get('state') == 'started':
-                    self.assertEqual(module.get('name'), 'desktop-commander-mcp-health.timer')
+                    self.assertEqual(module.get('name'), '{{ dcmcp_monitor_timer }}')
         self.assertIn('monitor-disable.yml', (ROLE / 'tasks/uninstall.yml').read_text())
 
     def test_monitor_is_opt_in_not_part_of_install_or_activate(self):

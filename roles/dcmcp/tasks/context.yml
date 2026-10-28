@@ -25,10 +25,7 @@
       - ansible_version['full'] is version('2.21', '>=')
       - ansible_version['full'] is version('2.22', '<')
       - not ansible_check_mode
-      - dcmcp_home == '/var/lib/desktop-commander-mcp/home'
       - dcmcp_prefix == '/opt/desktop-commander-mcp'
-      - dcmcp_helpers == '/usr/local/libexec/desktop-commander-mcp'
-      - dcmcp_service == 'desktop-commander-mcp.service'
     fail_msg: >-
       Supported native hosts: Ubuntu 26.04, RHEL 10, Fedora 43/44 and
       Arch Linux/Omarchy rolling, amd64/arm64 with systemd. Unvalidated
@@ -72,12 +69,25 @@
     that:
       - dcmcp_uid | int > 0
       - dcmcp_account_home is match('^/[A-Za-z0-9_./-]+$')
+      - dcmcp_account_home != '/'
+      - dcmcp_home == dcmcp_account_home
       - dcmcp_workdir is match('^/[A-Za-z0-9_./-]+$')
+      - dcmcp_instance_dir == dcmcp_prefix + '/instances/' + dcmcp_user
+      - dcmcp_current == dcmcp_instance_dir + '/current'
+      - dcmcp_helpers == '/usr/local/libexec/desktop-commander-mcp/' + dcmcp_user
+      - dcmcp_state_dir == '/var/lib/desktop-commander-mcp/' + dcmcp_user
+      - dcmcp_activation_stamp == dcmcp_state_dir + '/activation.sha256'
+      - dcmcp_service == 'desktop-commander-mcp@' + dcmcp_user + '.service'
+      - dcmcp_monitor_service == 'desktop-commander-mcp-health@' + dcmcp_user + '.service'
+      - dcmcp_monitor_timer == 'desktop-commander-mcp-health@' + dcmcp_user + '.timer'
+      - dcmcp_runtime_dir == 'desktop-commander-mcp-' + dcmcp_user
+      - dcmcp_health_port | int >= 1024
+      - dcmcp_health_port | int <= 65535
       - dcmcp_config_dir == dcmcp_home + '/.config/desktop-commander-mcp'
       - dcmcp_tunnel_config == dcmcp_config_dir + '/tunnel.yaml'
       - dcmcp_runtime_key == dcmcp_config_dir + '/runtime.key'
       - dcmcp_desktop_config == dcmcp_account_home + '/.claude-server-commander/config.json'
-      - dcmcp_examples == '/usr/local/share/desktop-commander-mcp'
+      - dcmcp_examples == '/usr/local/share/desktop-commander-mcp/' + dcmcp_user
       - dcmcp_release_id is match('^[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')
       - dcmcp_target_release is match('^[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')
     fail_msg: Invalid paths or release identifier; no user or sudoers changes are made.

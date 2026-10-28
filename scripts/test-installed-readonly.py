@@ -11,13 +11,14 @@ import sys
 
 import yaml
 
-from doctor import diagnose, selected_release
+from doctor import configure_user, diagnose, selected_release
 from host import require_native_host
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = Path('/opt/desktop-commander-mcp')
 PREFLIGHT = Path('/usr/local/libexec/desktop-commander-mcp/preflight.py')
-HOME = '/var/lib/desktop-commander-mcp/home'
+RUNTIME_HOME = '/'
+SERVICE = ''
 
 
 def expected_release(defaults, architecture):
@@ -57,7 +58,7 @@ def preflight_passes(user, release, workdir, release_only):
         command.append('--release-only')
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=False,
-                                timeout=20, env={**os.environ, 'HOME': HOME})
+                                timeout=20, env={**os.environ, 'HOME': RUNTIME_HOME})
         return result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -77,7 +78,7 @@ def audit():
                                             and trusted_root_regular(release / 'release.json'))
     except (OSError, ValueError, KeyError):
         checks['manifest_matches_pins'] = False
-    state = subprocess.run(['systemctl', 'show', 'desktop-commander-mcp.service',
+    state = subprocess.run(['systemctl', 'show', SERVICE,
                             '-p', 'User', '-p', 'WorkingDirectory', '--no-pager'],
                            capture_output=True, text=True, timeout=5, check=False)
     attributes = dict(line.split('=', 1) for line in state.stdout.splitlines() if '=' in line)
@@ -105,6 +106,12 @@ def main():
     if not args.local:
         parser.error('--local is required to select the installed host explicitly')
     require_native_host(allow_rpm=True, allow_arch=True)
+    global PREFLIGHT, RUNTIME_HOME, SERVICE
+    account = pwd.getpwuid(os.geteuid())
+    configure_user(account.pw_name)
+    PREFLIGHT = Path(f'/usr/local/libexec/desktop-commander-mcp/{account.pw_name}/preflight.py')
+    RUNTIME_HOME = account.pw_dir
+    SERVICE = f'desktop-commander-mcp@{account.pw_name}.service'
     try:
         checks = audit()
     except (OSError, KeyError, ValueError, subprocess.TimeoutExpired):

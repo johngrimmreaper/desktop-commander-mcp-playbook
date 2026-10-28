@@ -58,8 +58,18 @@ class Context:
     workdir: Path
     account_home: Path
     prefix: Path = Path("/opt/desktop-commander-mcp")
-    helpers: Path = Path("/usr/local/libexec/desktop-commander-mcp")
-    unit: Path = Path("/etc/systemd/system/desktop-commander-mcp.service")
+    helpers: Path = None
+    unit: Path = None
+
+    def __post_init__(self):
+        if self.helpers is None:
+            object.__setattr__(self, "helpers", Path("/usr/local/libexec/desktop-commander-mcp") / self.user)
+        if self.unit is None:
+            object.__setattr__(self, "unit", Path(f"/etc/systemd/system/desktop-commander-mcp@{self.user}.service"))
+
+    @property
+    def current(self):
+        return self.prefix / "instances" / self.user / "current"
 
     @property
     def config(self):
@@ -259,7 +269,7 @@ def validate_key(data):
 def runtime_environment(ctx, release):
     # Flags > environment > YAML upstream: build a clean, explicit environment.
     # The key is loaded natively by the tunnel only, and is not in the MCP child env.
-    # mcp-child sets its own HOME to the existing account home before exec.
+    # Both tunnel and MCP child run within the selected account's actual HOME.
     return {
         "HOME": str(ctx.home), "USER": ctx.user, "LOGNAME": ctx.user,
         "SHELL": "/bin/bash", "PATH": str(release / "node/bin") + ":/usr/local/bin:/usr/bin:/bin",
@@ -282,7 +292,7 @@ def probe(argv, ctx, release, cwd=None):
 
 def validate_release(ctx, release, runner=probe):
     requested = absolute_path(release)
-    if requested == ctx.prefix / "current":
+    if requested == ctx.current:
         info = requested.lstat()
         require(stat.S_ISLNK(info.st_mode) and info.st_uid == 0,
                 "The current release must be a root-owned managed symbolic link.")
@@ -367,7 +377,7 @@ def validate(ctx, release=None, check_port=False, runner=probe):
     port = validate_tunnel(parse_yaml(tunnel_bytes), ctx)
     validate_desktop(parse_json(desktop_bytes))
     validate_key(key_bytes)
-    release, manifest_bytes = validate_release(ctx, release or ctx.prefix / "current", runner)
+    release, manifest_bytes = validate_release(ctx, release or ctx.current, runner)
     helper_bytes = [read_file(ctx.helpers / name, 0)
                     for name in ("preflight.py", "readiness.py", "run", "mcp-child")]
     unit_bytes = read_file(ctx.unit, 0)
@@ -393,8 +403,7 @@ def main():
     parser.add_argument("--user", required=True,
                         help="Explicit existing Linux runtime account (no default)")
     parser.add_argument("--workdir")
-    parser.add_argument("--home", default="/var/lib/desktop-commander-mcp/home",
-                        help="Tunnel-client HOME; override only for isolated offline test fixtures")
+    parser.add_argument("--home", help="Override passwd home only for isolated offline test fixtures")
     parser.add_argument("--account-home",
                         help="Override passwd home only for isolated offline test fixtures")
     parser.add_argument("--release")
@@ -405,7 +414,7 @@ def main():
     args = parser.parse_args()
     try:
         account = pwd.getpwnam(args.user)
-        ctx = Context(args.user, account.pw_uid, absolute_path(args.home),
+        ctx = Context(args.user, account.pw_uid, absolute_path(args.home or account.pw_dir),
                       absolute_path(args.workdir or account.pw_dir),
                       absolute_path(args.account_home or account.pw_dir))
         if args.release_only:

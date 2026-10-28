@@ -21,8 +21,8 @@ from host import require_native_host
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = Path("/opt/desktop-commander-mcp")
 HELPERS = Path("/usr/local/libexec/desktop-commander-mcp")
-HOME = Path("/var/lib/desktop-commander-mcp/home")
-SERVICE = "desktop-commander-mcp.service"
+HOME = Path("/")
+SERVICE = ""
 SECRET = "sk-" + "Z" * 40
 
 
@@ -61,7 +61,7 @@ def production_snapshot():
             data = json.dumps(config, sort_keys=True).encode()
         files[str(path)] = (hashlib.sha256(data).hexdigest(),
                             path.stat().st_mode, path.stat().st_uid)
-    current = PREFIX / "current"
+    current = PREFIX / "instances" / pwd.getpwuid(os.getuid()).pw_name / "current"
     return properties(SERVICE), files, os.readlink(current) if current.is_symlink() else None
 
 
@@ -75,10 +75,14 @@ def wait_failed(unit):
 
 
 def main():
+    global HELPERS, HOME, SERVICE
     require_native_host()
     account = pwd.getpwuid(os.geteuid())
     if account.pw_uid == 0:
         raise RuntimeError("Run this check as the existing non-root runtime user.")
+    HELPERS = HELPERS / account.pw_name
+    HOME = Path(account.pw_dir)
+    SERVICE = f"desktop-commander-mcp@{account.pw_name}.service"
     run(["sudo", "-n", "true"])
     before = production_snapshot()
     defaults = yaml.safe_load((ROOT / "roles/dcmcp/defaults/main.yml").read_text())
@@ -108,14 +112,14 @@ def main():
         with socket.socket() as listener:
             listener.bind(("127.0.0.1", 0))
             address = "127.0.0.1:" + str(listener.getsockname()[1])
-        cfg = yaml.safe_load((Path("/usr/local/share/desktop-commander-mcp") /
+        cfg = yaml.safe_load((Path("/usr/local/share/desktop-commander-mcp") / account.pw_name /
                               "tunnel.yaml.example").read_text())
         cfg["control_plane"]["tunnel_id"] = "tunnel_" + "e" * 32
         cfg["control_plane"]["api_key"] = "file:" + str(tunnel.parent / "runtime.key")
         cfg["health"]["listen_addr"] = address
         tunnel.write_text(yaml.safe_dump(cfg))
         (tunnel.parent / "runtime.key").write_text(SECRET + "\n")
-        desktop.write_text((Path("/usr/local/share/desktop-commander-mcp") /
+        desktop.write_text((Path("/usr/local/share/desktop-commander-mcp") / account.pw_name /
                             "desktop-commander.json.example").read_text())
         for path in (tunnel, tunnel.parent / "runtime.key", desktop):
             path.chmod(0o600)
@@ -126,10 +130,12 @@ def main():
         isolated = root / "installation"
         candidate = isolated / "releases" / release.name
         run(["sudo", "-n", "mkdir", "-p", str(candidate)])
+        instance = isolated / "instances" / account.pw_name
+        run(["sudo", "-n", "mkdir", "-p", str(instance)])
         # sudo can inherit this test's private umask. Keep non-secret root-owned
         # fixture directories traversable so selector assertions inspect real links.
         run(["sudo", "-n", "chmod", "0755", str(isolated), str(isolated / "releases"),
-             str(candidate)])
+             str(candidate), str(isolated / "instances"), str(instance)])
         saved = root / "release.json"
         saved.write_bytes(manifest)
         run(["sudo", "-n", "install", "-m", "0644", str(saved), str(candidate / "release.json")])
@@ -138,8 +144,7 @@ def main():
             'PREFIX = Path("/opt/desktop-commander-mcp")', "PREFIX = Path(" + repr(str(isolated)) + ")"))
         stamp = root / "activation.sha256"
         source = (ROOT / "roles/dcmcp/tasks/activate.yml").read_text().replace(
-            "/var/lib/desktop-commander-mcp/activation.sha256", str(stamp)).replace(
-                "^/opt/desktop-commander-mcp/releases/", "^" + str(isolated) + "/releases/")
+            "^/opt/desktop-commander-mcp/releases/", "^" + str(isolated) + "/releases/")
         # Only fixture paths, unit name and retry duration change. The candidate
         # preflight above replaces its fixed-production-path role import.
         tasks = yaml.safe_load(source)[1:]
@@ -156,6 +161,8 @@ def main():
                     child["retries"] = 1
                     child["delay"] = 0
         settings = {"dcmcp_prefix": str(isolated), "dcmcp_helpers": str(HELPERS),
+                    "dcmcp_current": str(instance / "current"),
+                    "dcmcp_activation_stamp": str(stamp),
                     "dcmcp_target_release": release.name, "dcmcp_user": account.pw_name,
                     "dcmcp_workdir": account.pw_dir, "dcmcp_home": str(home),
                     "dcmcp_service": unit, "dcmcp_restart": False,
@@ -189,7 +196,7 @@ def main():
         activate()
         first = properties(unit)
         if (first["ActiveState"] != "active" or int(first["MainPID"]) <= 0
-                or not stamp.is_file() or (isolated / "current").resolve() != candidate):
+                or not stamp.is_file() or (instance / "current").resolve() != candidate):
             raise RuntimeError("First activation did not start and record the private fixture.")
         print("PASS: a fresh disabled unit activates after daemon-reload.", flush=True)
         second = activate()
@@ -214,7 +221,7 @@ def main():
         print("PASS: recovery activates after a prior configuration failure.", flush=True)
         run(["sudo", "-n", "systemctl", "stop", unit])
         run(["sudo", "-n", "systemctl", "disable", unit])
-        run(["sudo", "-n", "rm", "-f", str(stamp), str(isolated / "current")])
+        run(["sudo", "-n", "rm", "-f", str(stamp), str(instance / "current")])
 
         class UnrelatedHandler(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -231,8 +238,8 @@ def main():
             install_unit(option)
             activate(expected=2)
             status = properties(unit)
-            if (stamp.exists() or (isolated / "current").exists()
-                    or (isolated / "current").is_symlink()
+            if (stamp.exists() or (instance / "current").exists()
+                    or (instance / "current").is_symlink()
                     or status["UnitFileState"] != "disabled" or int(status["MainPID"]) != 0):
                 raise RuntimeError("Failed first activation recorded success or did not restore state.")
             print(f"PASS: unrelated HTTP 200 cannot hide a {label}; first activation is undone.",
@@ -242,21 +249,21 @@ def main():
         previous = isolated / "releases/previous-fixture"
         run(["sudo", "-n", "mkdir", "-m", "0755", str(previous)])
         run(["sudo", "-n", "install", "-m", "0644", str(saved), str(previous / "release.json")])
-        run(["sudo", "-n", "/usr/bin/python3", str(selector), previous.name])
+        run(["sudo", "-n", "/usr/bin/python3", str(selector), previous.name, account.pw_name])
         # A failed unit can still be enabled; rollback must preserve that policy.
         install_unit("--fail")
         run(["sudo", "-n", "systemctl", "daemon-reload"])
         run(["sudo", "-n", "systemctl", "start", unit])
         wait_failed(unit)
         run(["sudo", "-n", "systemctl", "enable", unit])
-        if (isolated / "current").resolve() != previous:
+        if (instance / "current").resolve() != previous:
             raise RuntimeError("The previous selector fixture is not readable.")
         failure = activate(expected=2, force=True)
         status = properties(unit)
-        if ((isolated / "current").resolve() != previous or status["UnitFileState"] != "enabled"
+        if ((instance / "current").resolve() != previous or status["UnitFileState"] != "enabled"
                 or int(status["MainPID"]) != 0 or stamp.exists()):
             raise RuntimeError("Failed replacement did not restore its prior stopped selection: "
-                               + repr({"selector": str((isolated / "current").resolve()),
+                               + repr({"selector": str((instance / "current").resolve()),
                                        "expected_selector": str(previous), "state": status,
                                        "stamp_exists": stamp.exists()})
                                + "\n" + failure.stdout + failure.stderr)

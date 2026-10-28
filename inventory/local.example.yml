@@ -12,4 +12,6 @@ all:
           # REQUIRED: replace the placeholder with an existing non-root Linux user.
           # Spaces only; align dcmcp_user with the two settings above.
           # Default working directory: the existing account's passwd home.
-          # Tunnel HOME is private; Desktop Commander uses this account's passwd home.
+          # Both tunnel and MCP child use this account's passwd home.
+          # To install another user on the same VM, select that user in a second
+          # serial playbook invocation (or use inventory aliases for the same host).

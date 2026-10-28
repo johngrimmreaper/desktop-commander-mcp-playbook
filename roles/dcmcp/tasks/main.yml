@@ -28,10 +28,15 @@
             0: [
                 pathlib.Path("/opt/desktop-commander-mcp"),
                 pathlib.Path("/opt/desktop-commander-mcp/releases"),
+                pathlib.Path("/opt/desktop-commander-mcp/instances"),
+                pathlib.Path(sys.argv[4]),
                 pathlib.Path("/usr/local/libexec/desktop-commander-mcp"),
+                pathlib.Path(sys.argv[5]),
                 pathlib.Path("/usr/local/share/desktop-commander-mcp"),
+                pathlib.Path(sys.argv[6]),
                 pathlib.Path("/var/cache/desktop-commander-mcp"),
                 pathlib.Path("/var/lib/desktop-commander-mcp"),
+                pathlib.Path(sys.argv[7]),
             ],
             uid: [
                 tunnel_home,
@@ -52,6 +57,10 @@
       - "{{ dcmcp_uid }}"
       - "{{ dcmcp_home }}"
       - "{{ dcmcp_account_home }}"
+      - "{{ dcmcp_instance_dir }}"
+      - "{{ dcmcp_helpers }}"
+      - "{{ dcmcp_examples }}"
+      - "{{ dcmcp_state_dir }}"
   changed_when: false
 
 - name: Install distribution-specific OS dependencies
@@ -67,20 +76,17 @@
   loop:
     - "{{ dcmcp_prefix }}"
     - "{{ dcmcp_prefix }}/releases"
+    - "{{ dcmcp_prefix }}/instances"
+    - "{{ dcmcp_instance_dir }}"
+    - /usr/local/libexec/desktop-commander-mcp
     - "{{ dcmcp_helpers }}"
+    - /usr/local/share/desktop-commander-mcp
     - "{{ dcmcp_examples }}"
     - /var/cache/desktop-commander-mcp
     - /var/lib/desktop-commander-mcp
+    - "{{ dcmcp_state_dir }}"
 
-- name: Create the dedicated tunnel-client home for the existing runtime user
-  ansible.builtin.file:
-    path: "{{ dcmcp_home }}"
-    state: directory
-    owner: "{{ dcmcp_user }}"
-    group: "{{ dcmcp_gid }}"
-    mode: "0700"
-
-- name: Inspect the existing XDG configuration parent
+- name: Inspect the existing XDG configuration parent inside the user's passwd home
   ansible.builtin.stat:
     path: "{{ dcmcp_home }}/.config"
     follow: false

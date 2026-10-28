@@ -17,8 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PREFIX = Path("/opt/desktop-commander-mcp")
 HELPERS = Path("/usr/local/libexec/desktop-commander-mcp")
 EXAMPLES = Path("/usr/local/share/desktop-commander-mcp")
-RUNTIME_HOME = Path("/var/lib/desktop-commander-mcp/home")
-SERVICE = "desktop-commander-mcp.service"
+RUNTIME_HOME = Path("/")
+SERVICE = ""
+SELECTOR = PREFIX / "current"
 # Synthetic fixture only. The script never runs tunnel-client run or contacts OpenAI.
 SECRET = "sk-" + "Z" * 40
 
@@ -44,7 +45,7 @@ def state():
 
 
 def current_link():
-    current = PREFIX / "current"
+    current = SELECTOR
     return os.readlink(current) if current.is_symlink() else None
 
 
@@ -189,6 +190,7 @@ def test_missing_configuration(account, release):
 
 
 def main():
+    global HELPERS, EXAMPLES, RUNTIME_HOME, SERVICE, SELECTOR
     parser = argparse.ArgumentParser()
     parser.add_argument("--local", action="store_true",
                         help="Test this authorized native Ubuntu 26.04 host; requires existing sudo")
@@ -200,6 +202,11 @@ def main():
     account = pwd.getpwuid(os.geteuid())
     if account.pw_uid == 0:
         parser.error("run as the existing non-root runtime user, using its existing sudo rights")
+    HELPERS = HELPERS / account.pw_name
+    EXAMPLES = EXAMPLES / account.pw_name
+    RUNTIME_HOME = Path(account.pw_dir)
+    SERVICE = f"desktop-commander-mcp@{account.pw_name}.service"
+    SELECTOR = PREFIX / "instances" / account.pw_name / "current"
     run(["sudo", "-n", "true"])
     releases = [path for path in (PREFIX / "releases").iterdir()
                 if not path.name.startswith(".") and (path / "release.json").is_file()]

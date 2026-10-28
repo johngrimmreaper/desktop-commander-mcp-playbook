@@ -10,9 +10,11 @@ import sys
 PREFIX = Path("/opt/desktop-commander-mcp")
 
 
-def select(release_id):
-    if os.geteuid() != 0 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,180}", release_id):
-        raise ValueError("invalid caller or release ID")
+def select(release_id, user):
+    if (os.geteuid() != 0
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{1,180}", release_id)
+            or not re.fullmatch(r"[a-z_][a-z0-9_-]*", user)):
+        raise ValueError("invalid caller, account or release ID")
     target = PREFIX / "releases" / release_id
     for path in (PREFIX, PREFIX / "releases", target, target / "release.json"):
         info = path.lstat()
@@ -20,14 +22,20 @@ def select(release_id):
             raise ValueError("release ownership or permissions invalid")
     if not target.is_dir() or not (target / "release.json").is_file():
         raise ValueError("release is incomplete")
-    current = PREFIX / "current"
+    instance = PREFIX / "instances" / user
+    for path in (PREFIX / "instances", instance):
+        info = path.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode)
+                or info.st_uid != 0 or info.st_mode & 0o022):
+            raise ValueError("instance directory ownership or permissions invalid")
+    current = instance / "current"
     if current.exists() and not current.is_symlink():
         raise ValueError("current is not a managed symbolic link")
-    temporary = PREFIX / (".current." + str(os.getpid()))
+    temporary = instance / (".current." + str(os.getpid()))
     try:
         temporary.symlink_to(target)
         os.replace(temporary, current)
-        descriptor = os.open(PREFIX, os.O_RDONLY | os.O_DIRECTORY)
+        descriptor = os.open(instance, os.O_RDONLY | os.O_DIRECTORY)
         try:
             os.fsync(descriptor)
         finally:
@@ -39,9 +47,10 @@ def select(release_id):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("release_id")
+    parser.add_argument("user", help="Account owning this instance")
     args = parser.parse_args()
     try:
-        select(args.release_id)
+        select(args.release_id, args.user)
     except (OSError, ValueError):
         print("Release selection failed; check the installed release and ownership.", file=sys.stderr)
         sys.exit(1)

@@ -7,8 +7,6 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$root"
 playbook="$root/.venv/bin/ansible-playbook"
 inventory="$root/inventory/hosts.yml"
-selector=/opt/desktop-commander-mcp/current
-service=desktop-commander-mcp.service
 export ANSIBLE_CONFIG="$root/ansible.cfg"
 
 # The detached transient system service runs as root; no sudo passwords or
@@ -17,7 +15,9 @@ if [[ $(id -u) != 0 ]]; then
   echo 'Detached upgrade runner must execute as root in its systemd unit.' >&2
   exit 2
 fi
-"$root/.venv/bin/python" "$root/scripts/validate-local-inventory.py" "$inventory"
+target_user=$("$root/.venv/bin/python" "$root/scripts/validate-local-inventory.py" "$inventory" --print-user)
+selector="/opt/desktop-commander-mcp/instances/${target_user}/current"
+service="desktop-commander-mcp@${target_user}.service"
 
 if [[ ! -x "$playbook" || ! -f "$inventory" || ! -L "$selector" ]]; then
   echo 'Upgrade prerequisites missing. No changes made.' >&2

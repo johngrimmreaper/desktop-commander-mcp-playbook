@@ -9,15 +9,17 @@ sys.path.insert(0, "{{ dcmcp_helpers }}")
 from preflight import Context, InvalidConfig, runtime_environment, validate
 
 ctx = Context("{{ dcmcp_user }}", {{ dcmcp_uid }}, Path("{{ dcmcp_home }}"),
-              Path("{{ dcmcp_workdir }}"), Path("{{ dcmcp_account_home }}"))
+              Path("{{ dcmcp_workdir }}"), Path("{{ dcmcp_account_home }}"),
+              helpers=Path("{{ dcmcp_helpers }}"),
+              unit=Path("/etc/systemd/system/{{ dcmcp_service }}"))
 try:
-    lock = os.open("/run/desktop-commander-mcp/instance.lock",
+    lock = os.open("/run/{{ dcmcp_runtime_dir }}/instance.lock",
                    os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     # The lock must survive exec into tunnel-client; its MCP child does not own it.
     os.set_inheritable(lock, True)
     validate(ctx, check_port=True)
-    release = (ctx.prefix / "current").resolve(strict=True)
+    release = Path("{{ dcmcp_current }}").resolve(strict=True)
     os.chdir(ctx.workdir)
     os.execve(release / "tunnel/tunnel-client",
               [str(release / "tunnel/tunnel-client"), "run", "--config", str(ctx.config)],

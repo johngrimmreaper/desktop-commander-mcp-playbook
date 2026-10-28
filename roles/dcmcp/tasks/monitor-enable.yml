@@ -35,7 +35,7 @@
 - name: Install the passive health-check service
   ansible.builtin.template:
     src: desktop-commander-mcp-health.service.j2
-    dest: /etc/systemd/system/desktop-commander-mcp-health.service
+    dest: "/etc/systemd/system/{{ dcmcp_monitor_service }}"
     owner: root
     group: root
     mode: "0644"
@@ -43,7 +43,7 @@
 - name: Install the passive health-check timer
   ansible.builtin.template:
     src: desktop-commander-mcp-health.timer.j2
-    dest: /etc/systemd/system/desktop-commander-mcp-health.timer
+    dest: "/etc/systemd/system/{{ dcmcp_monitor_timer }}"
     owner: root
     group: root
     mode: "0644"
@@ -62,8 +62,8 @@
       - restorecon
       - -v
       - "{{ dcmcp_helpers }}/doctor.py"
-      - /etc/systemd/system/desktop-commander-mcp-health.service
-      - /etc/systemd/system/desktop-commander-mcp-health.timer
+      - "/etc/systemd/system/{{ dcmcp_monitor_service }}"
+      - "/etc/systemd/system/{{ dcmcp_monitor_timer }}"
   register: dcmcp_monitor_relabel
   changed_when: dcmcp_monitor_relabel.stdout | length > 0
   when:
@@ -72,7 +72,7 @@
 
 - name: Enable and start only the passive monitoring timer
   ansible.builtin.systemd_service:
-    name: desktop-commander-mcp-health.timer
+    name: "{{ dcmcp_monitor_timer }}"
     daemon_reload: true
     enabled: true
     state: started

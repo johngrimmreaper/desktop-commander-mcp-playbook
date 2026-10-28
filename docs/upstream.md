@@ -91,13 +91,13 @@ modules per architecture was not verified by the connector, which cannot
 download binaries. Ansible therefore builds the pinned source on the target
 to obtain architecture-specific native modules with the lockfile's hashes.
 
-The native tunnel client runs as the existing account with
-HOME=/var/lib/desktop-commander-mcp/home for its credentials and state.
-The MCP child launcher overrides HOME with the account's real passwd home,
-and the working directory defaults there. Desktop Commander therefore
+The native tunnel client runs as the existing account, with HOME set to its
+passwd home for tunnel credentials and runtime state. The MCP child launcher
+also exports that account's real passwd home; its working directory defaults
+there. Desktop Commander therefore
 shares that user's configuration and caches; it does not create a separate
-Linux identity or sudoers policy. The distinction follows os.homedir() in
-the inspected Node source. Preflight validates both config locations.
+Linux identity or sudoers policy. This follows os.homedir() in the inspected
+Node source. Preflight validates the two config subdirectories in that HOME.
 
 ## OpenAI tunnel-client
 

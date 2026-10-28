@@ -1,5 +1,5 @@
 #!/bin/sh
-# Keep tunnel authentication/state under {{ dcmcp_home }}.
+# Tunnel authentication and MCP configuration share the selected user's real HOME.
 # Run Desktop Commander with the existing Linux account's home and settings.
 export HOME={{ dcmcp_account_home | quote }}
 export USER={{ dcmcp_user | quote }}
@@ -11,4 +11,4 @@ if [ -d /run/user/{{ dcmcp_uid }} ]; then
     fi
 fi
 # Only MCP JSON-RPC frames may go to stdout. exec preserves pipes and signals.
-exec {{ dcmcp_prefix }}/current/node/bin/node {{ dcmcp_prefix }}/current/mcp/dist/index.js --no-onboarding
+exec {{ dcmcp_current }}/node/bin/node {{ dcmcp_current }}/mcp/dist/index.js --no-onboarding

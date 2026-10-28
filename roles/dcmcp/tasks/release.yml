@@ -12,7 +12,7 @@
       tunnel_sha256: "{{ dcmcp_tunnel_checksums[ansible_facts['architecture']] }}"
       architecture: "{{ ansible_facts['architecture'] }}"
     dcmcp_release_path: "{{ dcmcp_prefix }}/releases/{{ dcmcp_release_id }}"
-    dcmcp_stage_path: "{{ dcmcp_prefix }}/releases/.{{ dcmcp_release_id }}.staging"
+    dcmcp_stage_path: "{{ dcmcp_prefix }}/releases/.{{ dcmcp_release_id }}.{{ dcmcp_user }}.staging"
 
 - name: Inspect the desired release directory
   ansible.builtin.stat:

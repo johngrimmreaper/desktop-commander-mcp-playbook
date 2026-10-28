@@ -137,7 +137,10 @@ class PreflightTests(unittest.TestCase):
             dcmcp_helpers=str(self.ctx.helpers), dcmcp_user=self.ctx.user,
             dcmcp_uid=self.ctx.uid, dcmcp_home=str(self.ctx.home),
             dcmcp_workdir=str(self.ctx.workdir),
-            dcmcp_account_home=str(self.ctx.account_home))
+            dcmcp_account_home=str(self.ctx.account_home),
+            dcmcp_service="desktop-commander-mcp@alice.service",
+            dcmcp_runtime_dir="desktop-commander-mcp-alice",
+            dcmcp_current=str(self.ctx.current))
         compile(rendered, "rendered-run", "exec")
         example = (ROOT / "roles/dcmcp/templates/desktop-commander.json.example.j2").read_bytes()
         pf.validate_desktop(pf.parse_json(example))
@@ -152,7 +155,7 @@ class PreflightTests(unittest.TestCase):
         rendered = engine.from_string(template).render(
             dcmcp_home=str(self.ctx.home), dcmcp_account_home=str(self.ctx.account_home),
             dcmcp_user=self.ctx.user, dcmcp_uid=self.ctx.uid,
-            dcmcp_prefix=str(self.ctx.prefix))
+            dcmcp_current=str(self.ctx.current))
         self.assertIn("export HOME=" + shlex.quote(str(self.ctx.account_home)), rendered)
         self.assertIn(f"export XDG_RUNTIME_DIR=/run/user/{self.ctx.uid}", rendered)
         self.assertIn(f"unix:path=/run/user/{self.ctx.uid}/bus", rendered)

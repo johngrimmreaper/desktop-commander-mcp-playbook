@@ -13,9 +13,27 @@ import yaml
 
 READINESS = Path("/usr/local/libexec/desktop-commander-mcp/readiness.py")
 PREFIX = Path("/opt/desktop-commander-mcp")
-HOME = Path("/var/lib/desktop-commander-mcp/home")
+HOME = Path("/")
 SERVICE = "desktop-commander-mcp.service"
 CONFIG_DIR = HOME / ".config/desktop-commander-mcp"
+
+
+def configure_user(user):
+    """Choose only the named account's daemon and private configuration."""
+    if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
+        raise ValueError("An explicit valid Linux username is required")
+    account = pwd.getpwnam(user)
+    if account.pw_uid == 0:
+        raise ValueError("Root cannot own an MCP tunnel")
+    global READINESS, HOME, SERVICE, CONFIG_DIR, SELECTOR
+    HOME = Path(account.pw_dir)
+    READINESS = Path("/usr/local/libexec/desktop-commander-mcp") / user / "readiness.py"
+    SERVICE = f"desktop-commander-mcp@{user}.service"
+    CONFIG_DIR = HOME / ".config/desktop-commander-mcp"
+    SELECTOR = PREFIX / "instances" / user / "current"
+
+
+SELECTOR = PREFIX / "current"  # Standalone test fixtures may patch this.
 
 
 def probe(command):
@@ -45,7 +63,7 @@ def private_file(path, uid):
 
 
 def selected_release(prefix=PREFIX):
-    selector = prefix / "current"
+    selector = SELECTOR if prefix == PREFIX else prefix / "current"
     try:
         if not selector.is_symlink() or selector.lstat().st_uid != 0:
             return None
@@ -142,8 +160,14 @@ def diagnose():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--user", required=True, help="Existing non-root tunnel account")
     parser.add_argument("--json", action="store_true", help="Machine-readable secret-free results")
     args = parser.parse_args()
+    try:
+        configure_user(args.user)
+    except (KeyError, ValueError):
+        print("Unknown or invalid tunnel account.", file=sys.stderr)
+        return 2
     checks = diagnose()
     good = all(value for key, value in checks.items() if key != "selinux")
     if args.json:

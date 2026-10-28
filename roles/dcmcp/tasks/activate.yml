@@ -4,7 +4,7 @@
 
 - name: Inspect the current release selector
   ansible.builtin.stat:
-    path: "{{ dcmcp_prefix }}/current"
+    path: "{{ dcmcp_current }}"
     follow: false
   register: dcmcp_current
 
@@ -55,12 +55,12 @@
 
 - name: Inspect the prior private activation stamp
   ansible.builtin.stat:
-    path: /var/lib/desktop-commander-mcp/activation.sha256
+    path: "{{ dcmcp_activation_stamp }}"
   register: dcmcp_stamp_stat
 
 - name: Read the prior private activation stamp
   ansible.builtin.slurp:
-    src: /var/lib/desktop-commander-mcp/activation.sha256
+    src: "{{ dcmcp_activation_stamp }}"
   register: dcmcp_stamp
   when: dcmcp_stamp_stat.stat.exists
   no_log: true
@@ -99,6 +99,7 @@
           - /usr/bin/python3
           - "{{ dcmcp_helpers }}/select-release.py"
           - "{{ dcmcp_target_release }}"
+          - "{{ dcmcp_user }}"
       changed_when: true
 
     - name: Reload the installed unit definition
@@ -152,7 +153,7 @@
     - name: Record the successfully activated input fingerprint
       ansible.builtin.copy:
         content: "{{ dcmcp_fingerprint.stdout }}\n"
-        dest: /var/lib/desktop-commander-mcp/activation.sha256
+        dest: "{{ dcmcp_activation_stamp }}"
         owner: root
         group: root
         mode: "0600"
@@ -171,12 +172,13 @@
           - /usr/bin/python3
           - "{{ dcmcp_helpers }}/select-release.py"
           - "{{ dcmcp_previous_release }}"
+          - "{{ dcmcp_user }}"
       when: dcmcp_previous_release | length > 0
       changed_when: true
 
     - name: Remove the selector after a failed first activation
       ansible.builtin.file:
-        path: "{{ dcmcp_prefix }}/current"
+        path: "{{ dcmcp_current }}"
         state: absent
       when: dcmcp_previous_release | length == 0
 

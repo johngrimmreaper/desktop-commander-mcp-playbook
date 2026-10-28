@@ -1,6 +1,6 @@
 [Unit]
 Description=Read-only Desktop Commander MCP health check
-After=desktop-commander-mcp.service
+After={{ dcmcp_service }}
 
 [Service]
 Type=oneshot
@@ -9,10 +9,10 @@ Group={{ dcmcp_gid }}
 Environment=HOME={{ dcmcp_home }}
 Environment=PYTHONDONTWRITEBYTECODE=1
 UMask=0077
-ExecStart=/usr/bin/python3 {{ dcmcp_helpers }}/doctor.py --json
+ExecStart=/usr/bin/python3 {{ dcmcp_helpers }}/doctor.py --json --user {{ dcmcp_user }}
 TimeoutStartSec=15
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=desktop-commander-mcp-health
+SyslogIdentifier=desktop-commander-mcp-health-{{ dcmcp_user }}
 NoNewPrivileges=true
 # No privilege escalation, automatic MCP restart or network exposure.

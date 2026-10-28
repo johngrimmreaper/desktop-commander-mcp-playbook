@@ -64,11 +64,12 @@ class DistroPackagesTests(unittest.TestCase):
         variables = {
             "dcmcp_user": "alice", "dcmcp_gid": "1234",
             "dcmcp_workdir": "/home/alice",
-            "dcmcp_home": "/var/lib/desktop-commander-mcp/home",
-            "dcmcp_prefix": "/opt/desktop-commander-mcp",
-            "dcmcp_helpers": "/usr/local/libexec/desktop-commander-mcp",
+            "dcmcp_home": "/home/alice",
+            "dcmcp_current": "/opt/desktop-commander-mcp/instances/alice/current",
+            "dcmcp_runtime_dir": "desktop-commander-mcp-alice",
+            "dcmcp_helpers": "/usr/local/libexec/desktop-commander-mcp/alice",
         }
-        launcher = "/usr/local/libexec/desktop-commander-mcp/run"
+        launcher = "/usr/local/libexec/desktop-commander-mcp/alice/run"
         for distro in ("Ubuntu", "RedHat", "Fedora", "Archlinux"):
             with self.subTest(distribution=distro):
                 unit = engine.from_string(template).render(**variables,
@@ -77,6 +78,7 @@ class DistroPackagesTests(unittest.TestCase):
                 self.assertIn("ExecStart=" + expected + "\n", unit)
                 self.assertIn("User=alice\n", unit)
                 self.assertIn("WorkingDirectory=/home/alice\n", unit)
+                self.assertIn("RuntimeDirectory=desktop-commander-mcp-alice\n", unit)
                 self.assertNotIn("User=mcp_operator", unit)
 
     def test_selinux_handling_is_limited_to_managed_paths(self):

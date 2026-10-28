@@ -14,10 +14,10 @@ Environment=HOME={{ dcmcp_home }}
 Environment=USER={{ dcmcp_user }}
 Environment=LOGNAME={{ dcmcp_user }}
 Environment=SHELL=/bin/bash
-Environment=PATH={{ dcmcp_prefix }}/current/node/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH={{ dcmcp_current }}/node/bin:/usr/local/bin:/usr/bin:/bin
 Environment=NODE_ENV=production
 UMask=0077
-RuntimeDirectory=desktop-commander-mcp
+RuntimeDirectory={{ dcmcp_runtime_dir }}
 RuntimeDirectoryMode=0700
 ExecStart={% if ansible_facts['distribution'] in ['RedHat', 'Fedora', 'Archlinux'] %}/usr/bin/python3 {% endif %}{{ dcmcp_helpers }}/run
 Restart=always
@@ -30,7 +30,7 @@ TimeoutStopSec=45
 TimeoutStartSec=60
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=desktop-commander-mcp
+SyslogIdentifier=desktop-commander-mcp-{{ dcmcp_user }}
 # Native host daemon; no Docker/Podman dependency or container namespace.
 # The configured runtime account retains its existing Linux/sudo privileges.
 # No NoNewPrivileges/ProtectSystem/sudoers changes are introduced.

@@ -14,7 +14,7 @@ import tempfile
 from host import require_native_host
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVICE = "desktop-commander-mcp.service"
+SERVICE = ""
 
 
 def snapshot(paths):
@@ -43,6 +43,7 @@ def systemctl(*args):
 
 
 def main():
+    global SERVICE
     parser = argparse.ArgumentParser()
     parser.add_argument("--local", action="store_true",
                         help="Install on this authorized native Ubuntu 26.04 host as its EXISTING user")
@@ -61,12 +62,13 @@ def main():
         parser.error("the runtime account must already exist; this test never creates users")
     if account.pw_uid == 0:
         parser.error("the existing runtime account must be non-root")
-    home = Path('/var/lib/desktop-commander-mcp/home')
+    SERVICE = f"desktop-commander-mcp@{account.pw_name}.service"
+    home = Path(account.pw_dir)
     paths = (home / ".config/desktop-commander-mcp/tunnel.yaml",
              home / ".config/desktop-commander-mcp/runtime.key",
              Path(account.pw_dir) / ".claude-server-commander/config.json")
     before = snapshot(paths)
-    current = Path("/opt/desktop-commander-mcp/current")
+    current = Path(f"/opt/desktop-commander-mcp/instances/{account.pw_name}/current")
     before_link = os.readlink(current) if current.is_symlink() else None
     before_active = systemctl("is-active") == "active"
     before_enabled = systemctl("is-enabled") == "enabled"

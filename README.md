@@ -59,14 +59,14 @@ See [validation status](docs/validation.md).
 
 ## How it works
 
-The desktop-commander-mcp.service unit runs a launcher that holds a local lock,
+Each `desktop-commander-mcp@USER.service` unit runs a launcher with its own lock,
 performs offline preflight and then executes tunnel-client run --config.
 The official client starts mcp-child, which uses exec to run dist/index.js with
 --no-onboarding. The unit runs as the manually selected `dcmcp_user`. The
-tunnel client keeps HOME=/var/lib/desktop-commander-mcp/home for its private
-credentials and state. The MCP child instead exports the selected account's
-real home from `/etc/passwd` as HOME, so Desktop Commander uses the same
-home-based configuration as that Linux user. WorkingDirectory also defaults to
+tunnel client and MCP child both use the selected account's real home from
+`/etc/passwd` as HOME. Each account gets distinct tunnel credentials, Desktop
+Commander settings, Git identity, service, release selector, and activation state.
+WorkingDirectory also defaults to
 the account's real home. The child receives the user's XDG runtime directory
 and D-Bus session address when their sockets exist. Existing filesystem,
 Docker and sudo permissions are unchanged.
@@ -87,7 +87,8 @@ Do not reuse the same ID in another daemon, service, VM or Codex-managed runtime
 Run Ansible operations sequentially, with one controller per host.
 
 The tunnel uses outbound HTTPS to api.openai.com:443 without exposing a public
-MCP endpoint. Health/UI bind to 127.0.0.1:8787 in the example. Installation also
+MCP endpoint. Health/UI bind to `127.0.0.1` on an instance-specific port
+(default: `10000 + UID % 45000`) in the example. Installation also
 requires HTTPS access to GitHub, nodejs.org and registry.npmjs.org, plus the host distribution's enabled trusted package repositories. Optional Desktop Commander features may use other destinations;
 the process's total network traffic is not limited to the OpenAI host.
 
@@ -156,16 +157,56 @@ commit that password. For a remote Linux host, copy `inventory/hosts.example.yml
 `inventory/hosts.yml`, then manually set `ansible_host`, `ansible_user` and
 `dcmcp_user`.
 
-Changing `dcmcp_user` on an **already running installation** is not a user
-migration. Its existing configuration and private files belong to the prior
-account; transferring ownership requires a separate, controlled procedure.
-Do not expect a simple variable change to migrate secrets or restart the
-running service as a different user. To change the working directory, set
+Each configured `dcmcp_user` identifies a separate instance; setting another
+user does not migrate or overwrite the old account's tunnel. To change the working directory, set
 `dcmcp_workdir` in the ignored inventory and create that directory manually.
 
 This feature selects the Linux runtime user only. **The current tunnel backend
 is still the OpenAI Secure MCP Tunnel**; support for other AI tunnel protocols
 would be a separate feature.
+
+### Multiple independent tunnels on one VM
+
+Create the Linux accounts first (for example `alice` and
+`bob`), each with its own HOME, Git configuration, tunnel ID,
+runtime key and Desktop Commander JSON. Add two **inventory aliases** that
+target the same physical host, so each runs the role with a different account:
+
+```yaml
+all:
+  children:
+    mcp_servers:
+      hosts:
+        cobra_tunnel:
+          ansible_host: omarchy-vm.example
+          ansible_user: YOUR_SSH_OPERATOR
+          dcmcp_user: alice
+        john_tunnel:
+          ansible_host: omarchy-vm.example
+          ansible_user: YOUR_SSH_OPERATOR
+          dcmcp_user: bob
+```
+
+All playbooks use `serial: 1` to stage the shared immutable release without
+simultaneous changes from the same Ansible run. The two services can run
+concurrently once activated. Each instance owns:
+
+| Resource | Per-user path/name |
+| --- | --- |
+| Tunnel credentials and configuration | `/home/USER/.config/desktop-commander-mcp/` |
+| Desktop Commander JSON | `/home/USER/.claude-server-commander/config.json` |
+| Service / monitoring | `desktop-commander-mcp@USER.service` / `desktop-commander-mcp-health@USER.timer` |
+| Root-owned launchers | `/usr/local/libexec/desktop-commander-mcp/USER/` |
+| Active release selector | `/opt/desktop-commander-mcp/instances/USER/current` |
+| Activation fingerprint | `/var/lib/desktop-commander-mcp/USER/activation.sha256` |
+| Runtime lock | `/run/desktop-commander-mcp-USER/instance.lock` |
+
+Versioned release binaries under `/opt/desktop-commander-mcp/releases/` are
+shared and remain installed when one account is uninstalled. The sample health
+port is based on Linux UID; ensure each tunnel YAML binds a **unique** loopback
+port (the validator checks availability on activation). The playbook contains
+**no legacy migration logic**: move existing single-instance deployments
+manually before using this layout.
 
 ### RHEL 10 / Fedora 43-44 setup (RHEL 10.2 x86_64 validated; Fedora provisional)
 
@@ -218,8 +259,8 @@ SSH connection to the target; a pre-existing tunnel on the destination is
 5. If the target uses SELinux, leave it **Enforcing**. The role restores default
    SELinux contexts on its own managed files and uses the system-labeled Python
    binary to launch the supervisor. No custom SELinux policies are installed.
-   Check `systemctl status desktop-commander-mcp.service`,
-   `journalctl -u desktop-commander-mcp.service`, `ls -lZ` on installed paths,
+   Check `systemctl status desktop-commander-mcp@USER.service`,
+   `journalctl -u desktop-commander-mcp@USER.service`, `ls -lZ` on installed paths,
    and AVC denials with `ausearch -m AVC -ts recent` if activation fails.
    Any site-specific denial must be diagnosed; **do not use `setenforce 0`**.
 
@@ -287,22 +328,21 @@ The role creates private directories but **never copies examples into these acti
 
 | Active file | Owner/mode |
 | --- | --- |
-| /var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml | selected `dcmcp_user`, 0600 |
-| /var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/runtime.key | selected `dcmcp_user`, 0600 |
+| `~/.config/desktop-commander-mcp/tunnel.yaml` | selected `dcmcp_user`, 0600 |
+| `~/.config/desktop-commander-mcp/runtime.key` | selected `dcmcp_user`, 0600 |
 | Selected account's home: `~/.claude-server-commander/config.json` | selected `dcmcp_user`, 0600 |
 | Both configuration directories | selected `dcmcp_user`, 0700 |
 
-The role creates /var/lib/desktop-commander-mcp/home owned by the
-configured `dcmcp_user`, with mode 0700. This is the tunnel client's HOME,
-not Desktop Commander's HOME. The MCP child reads its configuration from the
-selected account's real home, regardless of WorkingDirectory.
+The role uses the already existing Linux account home, without changing its
+ownership or permissions. The tunnel and child both read their configuration
+under this home. `dcmcp_user` must be an existing non-root account.
 
 ```bash
 umask 077
-cp -n /usr/local/share/desktop-commander-mcp/tunnel.yaml.example "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml"
-cp -n /usr/local/share/desktop-commander-mcp/desktop-commander.json.example "$HOME/.claude-server-commander/config.json"
-chmod 600 "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml" "$HOME/.claude-server-commander/config.json"
-vi "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml"
+cp -n "/usr/local/share/desktop-commander-mcp/$(id -un)/tunnel.yaml.example" "$HOME/.config/desktop-commander-mcp/tunnel.yaml"
+cp -n "/usr/local/share/desktop-commander-mcp/$(id -un)/desktop-commander.json.example" "$HOME/.claude-server-commander/config.json"
+chmod 600 "$HOME/.config/desktop-commander-mcp/tunnel.yaml" "$HOME/.claude-server-commander/config.json"
+vi "$HOME/.config/desktop-commander-mcp/tunnel.yaml"
 ```
 
 cp -n preserves existing files; update them manually when configuration already
@@ -312,7 +352,7 @@ ID from upstream documentation.
 
 The YAML is valid and extensively commented. The JSON is strict and has no
 comments; documentation for each field is installed at
-/usr/local/share/desktop-commander-mcp/configuration.md. There is no implicit
+`/usr/local/share/desktop-commander-mcp/USER/configuration.md`. There is no implicit
 YAML-to-JSON conversion or automatically generated active configuration.
 
 Create the **runtime key** file without placing the key on the command line,
@@ -325,7 +365,7 @@ from getpass import getpass
 import os
 from pathlib import Path
 key = getpass("Paste only the OpenAI runtime key: ")
-target = Path("/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/runtime.key")
+target = Path.home() / ".config/desktop-commander-mcp/runtime.key"
 descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
 with os.fdopen(descriptor, "w") as secret:
     secret.write(key + "\n")
@@ -411,18 +451,18 @@ permissions; this project does not promise unconditional mobile support.
 On the host, using the existing sudo permissions:
 
 ```bash
-systemctl status desktop-commander-mcp.service --no-pager
-sudo journalctl -u desktop-commander-mcp.service -n 100 --no-pager
-curl -fsS http://127.0.0.1:8787/healthz
-curl -fsS http://127.0.0.1:8787/readyz
-curl -fsS http://127.0.0.1:8787/health/mcp
+systemctl status "desktop-commander-mcp@$(id -un).service" --no-pager
+sudo journalctl -u "desktop-commander-mcp@$(id -un).service" -n 100 --no-pager
+curl -fsS http://127.0.0.1:11000/healthz  # example for UID 1000
+curl -fsS http://127.0.0.1:11000/readyz
+curl -fsS http://127.0.0.1:11000/health/mcp
 ```
 
 Use the port you configured. To check that readiness belongs to this managed
 daemon, run the same helper used by activation with existing sudo rights:
 
 ```bash
-sudo python3 /usr/local/libexec/desktop-commander-mcp/readiness.py --unit desktop-commander-mcp.service --listen-addr 127.0.0.1:8787
+sudo python3 "/usr/local/libexec/desktop-commander-mcp/$(id -un)/readiness.py" --unit "desktop-commander-mcp@$(id -un).service" --listen-addr 127.0.0.1:11000
 ```
 
 The helper inspects the daemon's Linux /proc descriptors, so run it with sudo.
@@ -435,7 +475,7 @@ To run preflight directly as the configured service account, pass the user
 the current selector does not exist before the first activation:
 
 ```bash
-env HOME=/var/lib/desktop-commander-mcp/home python3 /usr/local/libexec/desktop-commander-mcp/preflight.py --user YOUR_RUNTIME_USER --release /opt/desktop-commander-mcp/releases/RELEASE_ID
+python3 "/usr/local/libexec/desktop-commander-mcp/$(id -un)/preflight.py" --user "$(id -un)" --release /opt/desktop-commander-mcp/releases/RELEASE_ID
 ```
 
 To validate the installed artifacts before creating active configuration,
@@ -444,7 +484,7 @@ built entry point and native dependencies without reading keys or starting
 either daemon:
 
 ```bash
-env HOME=/var/lib/desktop-commander-mcp/home python3 /usr/local/libexec/desktop-commander-mcp/preflight.py --user YOUR_RUNTIME_USER --release-only --release /opt/desktop-commander-mcp/releases/RELEASE_ID
+python3 "/usr/local/libexec/desktop-commander-mcp/$(id -un)/preflight.py" --user "$(id -un)" --release-only --release /opt/desktop-commander-mcp/releases/RELEASE_ID
 ```
 
 The official client's doctor command is optional. With the daemon stopped,
@@ -453,7 +493,7 @@ without starting another child. It does not prove runtime permissions in OpenAI.
 Use a clean environment and the active YAML:
 
 ```bash
-env -i HOME=/var/lib/desktop-commander-mcp/home USER=YOUR_RUNTIME_USER SHELL=/bin/bash PATH=/opt/desktop-commander-mcp/current/node/bin:/usr/bin:/bin /opt/desktop-commander-mcp/current/tunnel/tunnel-client doctor --config "/var/lib/desktop-commander-mcp/home/.config/desktop-commander-mcp/tunnel.yaml" --explain
+env -i HOME="$HOME" USER="$(id -un)" SHELL=/bin/bash PATH="/opt/desktop-commander-mcp/instances/$(id -un)/current/node/bin:/usr/bin:/bin" "/opt/desktop-commander-mcp/instances/$(id -un)/current/tunnel/tunnel-client" doctor --config "$HOME/.config/desktop-commander-mcp/tunnel.yaml" --explain
 ```
 
 | Symptom | Check |
@@ -462,7 +502,7 @@ env -i HOME=/var/lib/desktop-commander-mcp/home USER=YOUR_RUNTIME_USER SHELL=/bi
 | /readyz does not respond or return 200 | Unit, available port, TLS/DNS/outbound HTTPS, key and tunnel permissions |
 | Daemon ready, tools missing | Correct connector/ID/workspace and discovery through ChatGPT |
 | mcp_initialization_required | Caller must send initialize and notifications/initialized after child replacement |
-| Another managed tunnel instance | Another launcher holds the lock; stop the previous unit and do not duplicate the ID |
+| Another managed tunnel instance | Another launcher for the *same Linux account* holds its lock; use a different account for a second tunnel and a unique health port and tunnel ID |
 | Sudo requests a password | Existing sudo authentication requirements; this project does not add NOPASSWD |
 | PDF/Chrome unavailable | Optional feature outside the versioned browser baseline described below |
 
@@ -513,7 +553,7 @@ Nothing is auto-activated on a new host.
    to stop the old cgroup, atomically switch `current`, start and check readiness.
    A subsequent invocation is idempotent if nothing has changed. Omit
    `--ask-become-pass` only if your sudo policy is already noninteractive.
-4. Verify `systemctl status desktop-commander-mcp.service`, `/readyz`, the
+4. Verify `systemctl status desktop-commander-mcp@USER.service`, `/readyz`, the
    journal, tool discovery and a real command from ChatGPT. The old release is
    retained for rollback.
 
@@ -638,8 +678,8 @@ installation and activation:
 
 ```bash
 .venv/bin/ansible-playbook playbooks/monitor-enable.yml --ask-become-pass
-systemctl list-timers desktop-commander-mcp-health.timer
-journalctl -u desktop-commander-mcp-health.service -n 30 --no-pager
+systemctl list-timers 'desktop-commander-mcp-health@USER.timer'
+journalctl -u 'desktop-commander-mcp-health@USER.service' -n 30 --no-pager
 ```
 
 A separate systemd timer checks the managed daemon about every five minutes

@@ -14,3 +14,6 @@ all:
           # Existing sudo only; pass --ask-become-pass if the host requires it.
           # ansible_become_password belongs in Ansible Vault, never here.
           # dcmcp_workdir: /home/REPLACE_WITH_EXISTING_LINUX_ACCOUNT/Projects
+          # For two tunnels on one VM, add a second inventory alias with the same
+          # ansible_host and a different dcmcp_user. The playbooks run serially.
+          # Both users need distinct tunnel IDs, credentials and health ports.

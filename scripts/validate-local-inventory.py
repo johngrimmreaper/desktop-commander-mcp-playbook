@@ -43,6 +43,7 @@ def is_local_only_inventory(source):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("inventory", type=Path)
+    parser.add_argument("--print-user", action="store_true", help="Print the validated runtime username")
     args = parser.parse_args()
     try:
         content = args.inventory.read_text()
@@ -53,7 +54,10 @@ def main():
               "system Python and explicitly selected non-root dcmcp_user. "
               "Use SSH/console for remote inventories.", file=sys.stderr)
         return 2
-    print("Detached upgrade inventory: local host verified (no secrets displayed).")
+    if args.print_user:
+        print(load_inventory(content)["all"]["children"]["mcp_servers"]["hosts"]["localhost"]["dcmcp_user"])
+    else:
+        print("Detached upgrade inventory: local host verified (no secrets displayed).")
     return 0
 
 

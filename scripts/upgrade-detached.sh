@@ -5,9 +5,9 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$root"
 # Only a single explicitly local target may be upgraded by the detached root
 # controller. A root systemd service cannot borrow a user's SSH credentials.
-"$root/.venv/bin/python" "$root/scripts/validate-local-inventory.py" \
-  "$root/inventory/hosts.yml"
-if ! systemctl is-active --quiet desktop-commander-mcp.service; then
+target_user=$("$root/.venv/bin/python" "$root/scripts/validate-local-inventory.py" \
+  "$root/inventory/hosts.yml" --print-user)
+if ! systemctl is-active --quiet "desktop-commander-mcp@${target_user}.service"; then
   echo 'Production MCP is inactive. Use install/preflight/activate instead.' >&2
   exit 2
 fi

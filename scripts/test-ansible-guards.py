@@ -27,10 +27,12 @@ def main():
              "service_mgr": "systemd",
              "virtualization_type": "kvm", "virtualization_tech_guest": ["kvm"]}
     variables = {"ansible_facts": facts, "dcmcp_user": pwd.getpwuid(os.geteuid()).pw_name,
-                 "dcmcp_home": "/var/lib/desktop-commander-mcp/home",
+                 "dcmcp_home": pwd.getpwuid(os.geteuid()).pw_dir,
                  "dcmcp_prefix": "/opt/desktop-commander-mcp",
-                 "dcmcp_helpers": "/usr/local/libexec/desktop-commander-mcp",
-                 "dcmcp_service": "desktop-commander-mcp.service"}
+                 "dcmcp_helpers": "/usr/local/libexec/desktop-commander-mcp/"
+                                  + pwd.getpwuid(os.geteuid()).pw_name,
+                 "dcmcp_service": "desktop-commander-mcp@"
+                                  + pwd.getpwuid(os.geteuid()).pw_name + ".service"}
     cases = [("native VM", {}, None, True),
              ("native physical host", {"virtualization_type": "", "virtualization_tech_guest": []},
               None, True),

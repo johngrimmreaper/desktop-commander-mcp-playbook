@@ -17,20 +17,22 @@ Desktop Commander MCP as a native systemd service. It is **not a sandbox**.
   upstream restrictions and/or a dedicated less-privileged Linux account if
   narrower access is required. Review the implications before assigning an
   administrative account to a tunnel.
-- The tunnel client has a private `HOME` for its credentials and state. The
-  Desktop Commander MCP child uses the selected account's real home and
-  home-based configuration; the working directory defaults there as well.
+- The tunnel client and the Desktop Commander MCP child both use the selected
+  account's real passwd `HOME`; private tunnel credentials remain under its
+  `.config/desktop-commander-mcp` directory. The working directory defaults there as well.
   Sharing the account's home does not isolate MCP permissions from other
   processes using the same Linux identity.
 
 ## Control plane and secrets
 
 - The tunnel establishes outbound HTTPS; the sample health endpoint listens
-  on loopback only. Do not forward 8787 or expose the local admin UI to the
+  on a per-user loopback port only. Do not forward that port or expose the local admin UI to the
   public network. No inbound MCP firewall opening is needed.
 - Provision a separate tunnel ID for each live MCP daemon. Do not use the same
   tunnel ID on two hosts, or start a second manual daemon against the service.
-  The local instance lock does not coordinate remote hosts.
+  Each Linux account has a separate local instance lock; these do not coordinate
+  other users or remote hosts. Two same-host tunnels also need different health
+  ports. Their distinct Git identities are those of their respective accounts.
 - Protect the runtime API key in the standalone `runtime.key` file, owned by
   `dcmcp_user`, mode `0600`, with private parent directories (`0700`).
   `tunnel.yaml` references it with a `file:` URI. Never put API keys in Git,

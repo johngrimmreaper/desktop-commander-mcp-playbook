@@ -30,7 +30,7 @@ log:
 health:
   # Local operators only; no public MCP listener or inbound firewall rule.
   # Select a free loopback port and use it in diagnostic commands.
-  listen_addr: 127.0.0.1:8787
+  listen_addr: 127.0.0.1:{{ dcmcp_health_port }}
 admin_ui:
   open_browser: false
   allow_remote: false
