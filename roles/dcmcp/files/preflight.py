@@ -290,6 +290,13 @@ def probe(argv, ctx, release, cwd=None):
     return result.stdout.strip()
 
 
+# These remain real, mandatory host dependencies in production.
+# Tests replace the list with isolated executable fixtures, never system files.
+REQUIRED_SYSTEM_EXECUTABLES = (
+    Path("/usr/bin/rg"), Path("/bin/bash"), Path("/usr/bin/sudo"),
+)
+
+
 def validate_release(ctx, release, runner=probe):
     requested = absolute_path(release)
     if requested == ctx.current:
@@ -330,7 +337,7 @@ def validate_release(ctx, release, runner=probe):
     require(node_version[0] == 24 and node_version >= (22, 12, 0),
             "This project supports Node 24; Desktop Commander requires a modern Node runtime.")
     for binary in (release / "node/bin/node", release / "tunnel/tunnel-client",
-                   Path("/usr/bin/rg"), Path("/bin/bash"), Path("/usr/bin/sudo")):
+                   *REQUIRED_SYSTEM_EXECUTABLES):
         require(binary.is_file() and os.access(binary, os.X_OK),
                 "A required executable is missing or not executable.")
         resolved = binary.resolve(strict=True)

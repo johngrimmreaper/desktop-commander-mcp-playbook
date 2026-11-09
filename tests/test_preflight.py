@@ -62,6 +62,13 @@ class PreflightTests(unittest.TestCase):
         self.write(self.release / "node/lib/node_modules/npm/bin/npm-cli.js", "// fixture", 0o644)
         for binary in ("node/bin/node", "tunnel/tunnel-client"):
             self.write(self.release / binary, "#!/bin/sh\nexit 0\n", 0o755)
+        # Host dependencies live in an isolated temporary directory, not /usr/bin.
+        # The fake ownership checks already model this installation prefix as root-owned.
+        test_bin = self.ctx.prefix / "fixture-system-bin"
+        test_bin.mkdir(mode=0o755)
+        self.system_executables = tuple(test_bin / name for name in ("rg", "bash", "sudo"))
+        for binary in self.system_executables:
+            self.write(binary, "#!/bin/sh\nexit 0\n", 0o755)
         for helper in ("preflight.py", "readiness.py", "run", "mcp-child"):
             self.write(self.ctx.helpers / helper, "# fixture only\n", 0o755)
         self.write(self.ctx.unit, "# fixture only\n", 0o644)
@@ -123,7 +130,8 @@ class PreflightTests(unittest.TestCase):
         def root_owned_lstat(path, *args, **kwargs):
             return test.fake_lstat(path, *args, **kwargs)
         with patch.object(Path, "lstat", root_owned_lstat), \
-                patch.object(pf, "read_file", side_effect=self.installed_read):
+                patch.object(pf, "read_file", side_effect=self.installed_read), \
+                patch.object(pf, "REQUIRED_SYSTEM_EXECUTABLES", self.system_executables):
             return pf.validate(self.ctx, self.release, runner=runner or self.fake_probe)
 
     def assert_invalid(self, action):
@@ -311,12 +319,19 @@ class PreflightTests(unittest.TestCase):
         def root_owned_lstat(path, *args, **kwargs):
             return test.fake_lstat(path, *args, **kwargs)
         with patch.object(Path, "lstat", root_owned_lstat), \
-                patch.object(pf, "read_file", side_effect=self.installed_read):
+                patch.object(pf, "read_file", side_effect=self.installed_read), \
+                patch.object(pf, "REQUIRED_SYSTEM_EXECUTABLES", self.system_executables):
             release, _manifest = pf.validate_release(self.ctx, self.release, self.fake_probe)
         self.assertEqual(self.release, release)
         self.assertFalse(self.ctx.config.exists())
         self.assertFalse(self.ctx.desktop_config.exists())
         self.assertFalse(self.ctx.key.exists())
+
+    def test_missing_system_executable_fails_closed(self):
+        # Even with isolated fixtures, the production rg path remains mandatory.
+        self.assertIn(Path("/usr/bin/rg"), pf.REQUIRED_SYSTEM_EXECUTABLES)
+        self.system_executables[0].unlink()
+        self.assert_invalid(self.validate)
 
     def test_matching_manifest_does_not_hide_missing_runtime_binary(self):
         (self.release / "node/bin/node").unlink()
