@@ -1,8 +1,10 @@
 # Omarchy Linux / Arch Linux deployment notes
 
-**Status:** Arch backend implemented; real Omarchy VM installation and OpenAI
-MCP connectivity are not yet validated. Do not confuse offline Ansible syntax
-checks with successful native integration.
+**Status:** Arch backend validated on one native headless Omarchy Slim
+Server KVM VM (2026-11-09). Pinned native installation, production preflight,
+systemd activation/readiness, and live ChatGPT-originated MCP execution all
+passed. See `docs/validation.md` for anonymized evidence, limitations and
+untested scenarios. One host does not establish universal compatibility.
 
 Omarchy is Arch-based, and has historically reported `ID=arch` in
 `/etc/os-release`. Ansible reports this family as `Archlinux`; our backend

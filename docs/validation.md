@@ -1,5 +1,45 @@
 # Deployment validation
 
+## Native Omarchy Slim Server deployment and live MCP verification (2026-11-09)
+
+**Validated on one headless, native x86_64 Arch/Omarchy KVM virtual
+machine.** Ansible ran locally using an explicitly selected existing
+non-root Linux account and native systemd PID 1. The result includes a
+real installation and a live OpenAI tunnel session, not only synthetic
+host-facts testing. Hostnames, local account names, account IDs, tunnel
+identifiers, IP addresses, and credential details are intentionally
+excluded to keep this evidence suitable for a public repository.
+
+| Check | Observed result |
+| --- | --- |
+| Offline checks | `scripts/check.py` passed: **72 unit tests**, Ruff 0.17.4, ansible-lint 26.9.0, and syntax checks for **8 playbooks** |
+| Controller | ansible-core 2.21.5, Arch system Python, pinned `community.general.pacman` backend |
+| Native install | `playbooks/install.yml`: **ok=56 changed=23 failed=0**; dependencies installed using pacman, pinned source/archive and native dependencies verified, immutable bundle built and staged |
+| Release | Desktop Commander **0.3.1**, Node.js **24.21.0**, tunnel-client **0.0.16** on x86_64 |
+| Configuration | Active tunnel YAML, Desktop Commander JSON, and runtime key stored separately with per-user ownership and mode `0600`; no credentials included here |
+| Offline production preflight | `playbooks/preflight.yml`: **ok=13 changed=0 failed=0** after correcting YAML indentation; a subsequent standalone installed preflight also passed |
+| First activation | `playbooks/activate.yml`: **ok=29 changed=3 failed=0**; one transient readiness retry before success |
+| Managed runtime | Per-account systemd instance service **active** and **enabled**; tunnel client and Node MCP child observed in the same cgroup |
+| Local readiness | Installed managed readiness checker passed on a loopback-only listener; local health alone does not verify OpenAI authentication |
+| OpenAI tunnel | Logs reported tunnel-client startup and control-plane metadata retrieval |
+| ChatGPT-originated MCP execution | **PASS**: a remote `start_process` command returned the expected host identity, non-root runtime user, Arch operating system and kernel, and `active`/`enabled` service state; command exited successfully |
+| Further read-only checks | Installed production preflight and managed readiness passed again; the repository worktree was clean prior to documentation changes |
+
+An initial offline test failure revealed that synthetic preflight tests
+depended on host `/usr/bin/rg`. They now create isolated executable
+fixtures; **production still requires the real** `/usr/bin/rg`,
+`/bin/bash`, and `/usr/bin/sudo`. The revised suite passed 72 tests
+on the native Omarchy host and during a repeated documentation check.
+
+**Scope:** Native package installation, pinned build, offline preflight,
+systemd activation/readiness, OpenAI control-plane access, and live
+ChatGPT MCP execution are verified on this host. Reboot persistence,
+repeat-install idempotence, upgrades/rollback, simultaneous runtime
+accounts, arm64, other Arch variants and the Ubuntu-only destructive
+native integration suites have **not** been verified here. An enabled
+service is not proof that a reboot test was completed. These results
+do not establish compatibility with every Arch/Omarchy configuration.
+
 ## Arch Linux / Omarchy compatibility preparation (2026-10-23)
 
 An initial Arch backend is implemented through pinned
@@ -12,12 +52,13 @@ system updates remain explicitly outside this playbook. The Arch service
 launcher invokes `/usr/bin/python3`, and no SELinux RPM-specific relabeling
 is attempted. Omarchy preparation instructions are in `docs/omarchy.md`.
 
-**Evidence:** Offline unit tests, Ansible syntax checks, Ruff, ansible-lint
-and synthetic Arch host-fact acceptance passed on the RHEL controller.
-`community.general.pacman` 13.5.0 was installed on the controller and
-resolved by `ansible-doc`. **No native Arch/Omarchy deployment, pacman
-transaction, immutable release build or live tunnel test has been performed**
-on an Arch VM. Support is provisional until the planned VM test.
+**Historical evidence as of 2026-10-23:** Offline unit tests, Ansible
+syntax checks, Ruff, ansible-lint and synthetic Arch host-fact acceptance
+passed on the RHEL controller. `community.general.pacman` 13.5.0 was
+installed on the controller and resolved by `ansible-doc`. At that time,
+no native Arch/Omarchy deployment, pacman transaction, immutable release
+build or live tunnel test had been performed on an Arch VM. The later
+2026-11-09 native Omarchy verification is recorded above.
 
 ## Native RHEL passive monitoring and audit (2026-10-23)
 
