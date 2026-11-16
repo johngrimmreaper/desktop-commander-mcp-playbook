@@ -1,7 +1,7 @@
 # Security boundaries and operator responsibilities
 
 This project installs upstream Desktop Commander MCP as a native Linux program.
-The default-for-new-inventories stdio path launches via MCP clients on demand;
+The default stdio path launches via MCP clients on demand;
 the optional OpenAI Secure MCP Tunnel transport runs as a managed systemd
 service. **Neither mode is a sandbox.**
 

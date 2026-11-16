@@ -1,17 +1,14 @@
 # Deployment validation
 
-## Vendor-neutral stdio implementation review (2026-11-16)
+## Breaking vendor-neutral architecture (2026-11-16)
 
-Introduced a second explicit `dcmcp_transport: stdio` path on a development
-branch, with schema-2 releases containing only the pinned Desktop Commander
-server and Node runtime. The original OpenAI schema-1 release/daemon path
-remains compatible by default for older inventories. Stdio offline preflight
-needs no OpenAI YAML, tunnel binary or runtime key, and validates the common
-Desktop Commander settings and managed launcher. Added regression tests for
-transport isolation and missing launchers. No native stdio agent invocation
-through Gemini, Claude or Codex, and no Solaris deployment, has been performed.
-The historical checks and test counts below refer to earlier revisions.
-
+The role now **defaults to stdio**, while OpenAI is an explicitly selected
+optional adapter. Both use one strict **schema-2** manifest with a transport
+identifier; older schema-1 bundles are intentionally unsupported, and automatic
+migration is not implemented. The historical deployments below occurred with
+older implementation and pins. They are evidence of past behavior **only**,
+not validation of fresh installs with the new architecture. Tests on fresh
+native targets remain required before merging or public release.
 
 ## Native Omarchy Slim Server deployment and live MCP verification (2026-11-09)
 
@@ -41,7 +38,9 @@ excluded to keep this evidence suitable for a public repository.
 An initial offline test failure revealed that synthetic preflight tests
 depended on host `/usr/bin/rg`. They now create isolated executable
 fixtures; **production still requires the real** `/usr/bin/rg`,
-`/bin/bash`, and `/usr/bin/sudo`. The revised suite passed 72 tests
+`/bin/bash`, and `/usr/bin/sudo` at that historical revision.
+The new vendor-neutral preflight intentionally makes sudo optional.
+The revised suite passed 72 tests
 on the native Omarchy host and during a repeated documentation check.
 
 **Scope:** Native package installation, pinned build, offline preflight,

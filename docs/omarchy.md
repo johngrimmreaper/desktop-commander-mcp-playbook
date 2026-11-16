@@ -41,7 +41,7 @@ service, running under the explicitly selected non-root Linux account. In
    ```
 
 5. Replace the `dcmcp_user` placeholder with the actual existing account.
-   Keep `dcmcp_transport: stdio` for vendor-neutral direct MCP, or explicitly
+   The default is `dcmcp_transport: stdio` for vendor-neutral direct MCP, or explicitly
    choose `openai_tunnel` to reproduce the verified OpenAI setup.
    Run `playbooks/install.yml` from an independent SSH/console session with
    the required sudo permissions. If necessary, use `--ask-become-pass`.
