@@ -26,7 +26,8 @@ def main():
              "distribution_major_version": "26", "architecture": os.uname().machine,
              "service_mgr": "systemd",
              "virtualization_type": "kvm", "virtualization_tech_guest": ["kvm"]}
-    variables = {"ansible_facts": facts, "dcmcp_user": pwd.getpwuid(os.geteuid()).pw_name,
+    variables = {"ansible_facts": facts, "dcmcp_transport": "stdio",
+                 "dcmcp_user": pwd.getpwuid(os.geteuid()).pw_name,
                  "dcmcp_home": pwd.getpwuid(os.geteuid()).pw_dir,
                  "dcmcp_prefix": "/opt/desktop-commander-mcp",
                  "dcmcp_helpers": "/usr/local/libexec/desktop-commander-mcp/"

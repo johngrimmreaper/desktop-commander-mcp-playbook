@@ -2,7 +2,8 @@
 - name: Define the desired release manifest
   ansible.builtin.set_fact:
     dcmcp_manifest:
-      schema: "{{ 1 if dcmcp_transport == 'openai_tunnel' else 2 }}"
+      schema: 2
+      transport: "{{ dcmcp_transport }}"
       desktop_version: "{{ dcmcp_desktop_version }}"
       desktop_revision: "{{ dcmcp_desktop_revision }}"
       lock_blob: "{{ dcmcp_lock_blob }}"
@@ -12,13 +13,13 @@
     dcmcp_release_path: "{{ dcmcp_prefix }}/releases/{{ dcmcp_release_id }}"
     dcmcp_stage_path: "{{ dcmcp_prefix }}/releases/.{{ dcmcp_release_id }}.{{ dcmcp_user }}.staging"
 
-- name: Record selected transport in the immutable manifest
+- name: Record optional OpenAI transport artifacts in the immutable manifest
   ansible.builtin.set_fact:
     dcmcp_manifest: >-
       {{ dcmcp_manifest | combine(
            {'tunnel_version': dcmcp_tunnel_version,
-            'tunnel_sha256': dcmcp_tunnel_checksums[ansible_facts['architecture']]}
-           if dcmcp_transport == 'openai_tunnel' else {'transport': 'stdio'}) }}
+            'tunnel_sha256': dcmcp_tunnel_checksums[ansible_facts['architecture']]}) }}
+  when: dcmcp_transport == 'openai_tunnel'
 
 - name: Inspect the desired release directory
   ansible.builtin.stat:

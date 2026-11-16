@@ -86,10 +86,10 @@ def main():
     run(["sudo", "-n", "true"])
     before = production_snapshot()
     defaults = yaml.safe_load((ROOT / "roles/dcmcp/defaults/main.yml").read_text())
-    release_id = (f"dc-{defaults['dcmcp_desktop_version']}-"
+    release_id = (f"dc-v2-{defaults['dcmcp_desktop_version']}-"
                   f"{defaults['dcmcp_desktop_revision'][:12]}-"
                   f"node-{defaults['dcmcp_node_version']}-"
-                  f"tunnel-{defaults['dcmcp_tunnel_version']}-{os.uname().machine}")
+                  f"openai-tunnel-{defaults['dcmcp_tunnel_version']}-{os.uname().machine}")
     release = PREFIX / "releases" / release_id
     if not (release / "release.json").is_file():
         raise RuntimeError("Target pinned release is not installed")
@@ -163,6 +163,7 @@ def main():
         settings = {"dcmcp_prefix": str(isolated), "dcmcp_helpers": str(HELPERS),
                     "dcmcp_current": str(instance / "current"),
                     "dcmcp_activation_stamp": str(stamp),
+                    "dcmcp_transport": "openai_tunnel",
                     "dcmcp_target_release": release.name, "dcmcp_user": account.pw_name,
                     "dcmcp_workdir": account.pw_dir, "dcmcp_home": str(home),
                     "dcmcp_service": unit, "dcmcp_restart": False,

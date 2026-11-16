@@ -51,7 +51,8 @@ class PreflightTests(unittest.TestCase):
         (self.release / "tunnel").mkdir()
         (self.release / "mcp/dist").mkdir(parents=True)
         self.manifest = {
-            "schema": 1, "desktop_version": "0.2.52", "desktop_revision": "a" * 40,
+            "schema": 2, "transport": "openai_tunnel",
+            "desktop_version": "0.2.52", "desktop_revision": "a" * 40,
             "lock_blob": "b" * 40, "node_version": "24.21.0", "node_sha256": "c" * 64,
             "tunnel_version": "0.0.16", "tunnel_sha256": "d" * 64,
             "architecture": os.uname().machine,
@@ -66,7 +67,7 @@ class PreflightTests(unittest.TestCase):
         # The fake ownership checks already model this installation prefix as root-owned.
         test_bin = self.ctx.prefix / "fixture-system-bin"
         test_bin.mkdir(mode=0o755)
-        self.system_executables = tuple(test_bin / name for name in ("rg", "bash", "sudo"))
+        self.system_executables = tuple(test_bin / name for name in ("rg", "bash"))
         for binary in self.system_executables:
             self.write(binary, "#!/bin/sh\nexit 0\n", 0o755)
         for helper in ("preflight.py", "readiness.py", "run", "mcp-child"):
@@ -185,7 +186,7 @@ class PreflightTests(unittest.TestCase):
     def use_stdio_manifest(self):
         manifest = {key: value for key, value in self.manifest.items()
                     if key not in ("tunnel_version", "tunnel_sha256")}
-        manifest.update(schema=2, transport="stdio")
+        manifest["transport"] = "stdio"
         self.write(self.release / "release.json", json.dumps(manifest), 0o644)
         return manifest
 
@@ -215,6 +216,33 @@ class PreflightTests(unittest.TestCase):
     def test_vendor_neutral_stdio_rejects_missing_launcher(self):
         self.use_stdio_manifest()
         (self.ctx.helpers / "mcp-child").unlink()
+        self.assert_invalid(self.validate_stdio)
+
+    def test_old_release_manifest_schema_is_not_supported(self):
+        self.manifest["schema"] = 1
+        self.manifest.pop("transport")
+        self.write(self.release / "release.json", json.dumps(self.manifest), 0o644)
+        self.assert_invalid(self.validate)
+        self.assert_invalid(self.validate_stdio)
+
+    def test_openai_release_requires_its_explicit_transport_artifacts(self):
+        self.manifest.pop("tunnel_sha256")
+        self.write(self.release / "release.json", json.dumps(self.manifest), 0o644)
+        self.assert_invalid(self.validate)
+
+    def test_stdio_release_cannot_embed_an_openai_tunnel(self):
+        self.use_stdio_manifest()
+        manifest = json.loads((self.release / "release.json").read_text())
+        manifest["tunnel_version"] = "0.0.16"
+        manifest["tunnel_sha256"] = "d" * 64
+        self.write(self.release / "release.json", json.dumps(manifest), 0o644)
+        self.assert_invalid(self.validate_stdio)
+
+    def test_unknown_provider_transport_is_rejected(self):
+        self.use_stdio_manifest()
+        manifest = json.loads((self.release / "release.json").read_text())
+        manifest["transport"] = "unimplemented_cloud_provider"
+        self.write(self.release / "release.json", json.dumps(manifest), 0o644)
         self.assert_invalid(self.validate_stdio)
 
     def test_runtime_key_rotation_changes_fingerprint(self):
@@ -362,6 +390,10 @@ class PreflightTests(unittest.TestCase):
         self.assertFalse(self.ctx.config.exists())
         self.assertFalse(self.ctx.desktop_config.exists())
         self.assertFalse(self.ctx.key.exists())
+
+    def test_sudo_is_not_a_requirement_of_a_standard_mcp_server(self):
+        self.assertNotIn(Path("/usr/bin/sudo"), pf.REQUIRED_SYSTEM_EXECUTABLES)
+        self.assertRegex(self.validate(), r"^[0-9a-f]{64}$")
 
     def test_missing_system_executable_fails_closed(self):
         # Even with isolated fixtures, the production rg path remains mandatory.

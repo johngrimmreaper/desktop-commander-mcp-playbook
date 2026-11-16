@@ -290,10 +290,11 @@ def probe(argv, ctx, release, cwd=None):
     return result.stdout.strip()
 
 
-# These remain real, mandatory host dependencies in production.
-# Tests replace the list with isolated executable fixtures, never system files.
+# Core Desktop Commander dependencies. Sudo is intentionally not required:
+# the selected runtime identity may have no administrative privileges at all.
+# Tests replace these with isolated fixtures, never system files.
 REQUIRED_SYSTEM_EXECUTABLES = (
-    Path("/usr/bin/rg"), Path("/bin/bash"), Path("/usr/bin/sudo"),
+    Path("/usr/bin/rg"), Path("/bin/bash"),
 )
 
 
@@ -316,26 +317,25 @@ def validate_release(ctx, release, runner=probe):
             "The installed release must be a real root-owned directory.")
     manifest_bytes = read_file(release / "release.json", 0)
     manifest = parse_json(manifest_bytes)
-    require(type(manifest.get("schema")) is int and manifest["schema"] in (1, 2),
-            "Unsupported release manifest schema.")
-    if manifest["schema"] == 1:
-        mapping_keys(manifest, ("schema", "desktop_version", "desktop_revision", "lock_blob",
-                                "node_version", "node_sha256", "tunnel_version", "tunnel_sha256",
-                                "architecture"))
+    require(type(manifest.get("schema")) is int and manifest["schema"] == 2,
+            "Unsupported release manifest schema; reinstall using the current installer.")
+    required = ("schema", "transport", "desktop_version", "desktop_revision",
+                "lock_blob", "node_version", "node_sha256", "architecture")
+    transport = manifest.get("transport")
+    require(transport in ("stdio", "openai_tunnel"), "Unknown MCP transport in release.")
+    if transport == "openai_tunnel":
+        mapping_keys(manifest, required + ("tunnel_version", "tunnel_sha256"))
     else:
-        mapping_keys(manifest, ("schema", "transport", "desktop_version",
-                                "desktop_revision", "lock_blob", "node_version", "node_sha256",
-                                "architecture"))
-        require(manifest["transport"] == "stdio", "Unknown vendor-neutral release type.")
-    for key in (("desktop_version", "node_version", "tunnel_version") if manifest["schema"] == 1
-                else ("desktop_version", "node_version")):
+        mapping_keys(manifest, required)
+    for key in (("desktop_version", "node_version", "tunnel_version")
+                if transport == "openai_tunnel" else ("desktop_version", "node_version")):
         require(isinstance(manifest[key], str)
                 and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", manifest[key]),
                 "Release versions are malformed.")
     for key in ("desktop_revision", "lock_blob"):
         require(isinstance(manifest[key], str) and re.fullmatch(r"[0-9a-f]{40}", manifest[key]),
                 "A source integrity pin is malformed.")
-    for key in (("node_sha256", "tunnel_sha256") if manifest["schema"] == 1
+    for key in (("node_sha256", "tunnel_sha256") if transport == "openai_tunnel"
                 else ("node_sha256",)):
         require(isinstance(manifest[key], str) and re.fullmatch(r"[0-9a-f]{64}", manifest[key]),
                 "An archive integrity pin is malformed.")
@@ -345,7 +345,7 @@ def validate_release(ctx, release, runner=probe):
     require(node_version[0] == 24 and node_version >= (22, 12, 0),
             "This project supports Node 24; Desktop Commander requires a modern Node runtime.")
     binaries = (release / "node/bin/node", *REQUIRED_SYSTEM_EXECUTABLES)
-    if manifest["schema"] == 1:
+    if transport == "openai_tunnel":
         binaries += (release / "tunnel/tunnel-client",)
     for binary in binaries:
         require(binary.is_file() and os.access(binary, os.X_OK),
@@ -362,7 +362,7 @@ def validate_release(ctx, release, runner=probe):
             "The installed Desktop Commander package version differs from the manifest.")
     require(runner([str(release / "node/bin/node"), "--version"], ctx, release)
             == "v" + manifest["node_version"], "The installed Node version differs from the manifest.")
-    if manifest["schema"] == 1:
+    if transport == "openai_tunnel":
         version = runner([str(release / "tunnel/tunnel-client"), "--version"], ctx, release)
         require(re.search(r"(?<![0-9])v?" + re.escape(manifest["tunnel_version"]) + r"(?![0-9.])",
                           version), "The installed tunnel client version differs from the manifest.")
@@ -380,7 +380,7 @@ def validate_release(ctx, release, runner=probe):
 
 def validate_runtime_context(ctx):
     require(os.geteuid() == ctx.uid, "Run preflight as the configured runtime user, not root.")
-    require(os.environ.get("HOME") == str(ctx.home), "Tunnel-client HOME does not match the private runtime home.")
+    require(os.environ.get("HOME") == str(ctx.home), "Runtime HOME does not match the configured account home.")
     require(ctx.workdir.is_dir() and os.access(ctx.workdir, os.R_OK | os.W_OK | os.X_OK),
             "The working directory is missing or not accessible to the runtime user.")
 
@@ -396,8 +396,8 @@ def validate(ctx, release=None, check_port=False, runner=probe):
     validate_desktop(parse_json(desktop_bytes))
     validate_key(key_bytes)
     release, manifest_bytes = validate_release(ctx, release or ctx.current, runner)
-    require(parse_json(manifest_bytes)["schema"] == 1,
-            "OpenAI tunnel activation requires a tunnel-enabled release.")
+    require(parse_json(manifest_bytes)["transport"] == "openai_tunnel",
+            "OpenAI tunnel activation requires its explicit transport release.")
     helper_bytes = [read_file(ctx.helpers / name, 0)
                     for name in ("preflight.py", "readiness.py", "run", "mcp-child")]
     unit_bytes = read_file(ctx.unit, 0)
@@ -424,7 +424,7 @@ def validate_stdio(ctx, release, runner=probe):
     private_directory(ctx.desktop_config.parent, ctx.uid)
     validate_desktop(parse_json(read_file(ctx.desktop_config, ctx.uid, private=True)))
     selected, manifest_bytes = validate_release(ctx, release, runner)
-    require(parse_json(manifest_bytes)["schema"] == 2,
+    require(parse_json(manifest_bytes)["transport"] == "stdio",
             "Stdio activation requires a vendor-independent release.")
     child = ctx.helpers / "mcp-child"
     read_file(child, 0)

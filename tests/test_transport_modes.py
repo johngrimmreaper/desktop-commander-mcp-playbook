@@ -10,14 +10,23 @@ TASKS = ROLE / "tasks"
 
 
 class TransportModesTests(unittest.TestCase):
-    def test_role_default_preserves_old_deployments_and_examples_are_neutral(self):
+    def test_role_default_and_examples_are_vendor_neutral(self):
         defaults = yaml.safe_load((ROLE / "defaults/main.yml").read_text())
-        self.assertEqual(defaults["dcmcp_transport"], "openai_tunnel")
+        self.assertEqual(defaults["dcmcp_transport"], "stdio")
         for name in ("hosts", "local"):
             inventory = yaml.safe_load((ROOT / f"inventory/{name}.example.yml").read_text())
             hosts = inventory["all"]["children"]["mcp_servers"]["hosts"]
             host = next(iter(hosts.values()))
             self.assertEqual(host["dcmcp_transport"], "stdio")
+
+    def test_one_explicit_release_schema_for_both_transports(self):
+        source = (TASKS / "release.yml").read_text()
+        self.assertIn("schema: 2", source)
+        self.assertIn('transport: "{{ dcmcp_transport }}"', source)
+        self.assertNotIn("schema: 1", source)
+        self.assertNotIn("if dcmcp_transport == 'openai_tunnel' else 2", source)
+        for line in yaml.safe_load((ROOT / "playbooks/activate.yml").read_text())[0]["tasks"]:
+            self.assertIn("default('stdio')", line["when"])
 
     def test_tunnel_download_and_installed_service_are_optional(self):
         release = yaml.safe_load((TASKS / "release.yml").read_text())

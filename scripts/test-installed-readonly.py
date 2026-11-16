@@ -22,15 +22,15 @@ SERVICE = ''
 
 
 def expected_release(defaults, architecture):
-    return (f"dc-{defaults['dcmcp_desktop_version']}-"
+    return (f"dc-v2-{defaults['dcmcp_desktop_version']}-"
             f"{defaults['dcmcp_desktop_revision'][:12]}-"
             f"node-{defaults['dcmcp_node_version']}-"
-            f"tunnel-{defaults['dcmcp_tunnel_version']}-{architecture}")
+            f"openai-tunnel-{defaults['dcmcp_tunnel_version']}-{architecture}")
 
 
 def expected_manifest(defaults, architecture):
     return {
-        'schema': 1, 'architecture': architecture,
+        'schema': 2, 'transport': 'openai_tunnel', 'architecture': architecture,
         'desktop_version': defaults['dcmcp_desktop_version'],
         'desktop_revision': defaults['dcmcp_desktop_revision'],
         'lock_blob': defaults['dcmcp_lock_blob'],

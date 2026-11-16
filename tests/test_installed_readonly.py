@@ -23,7 +23,7 @@ class InstalledReadOnlyTests(unittest.TestCase):
                     'dcmcp_node_checksums': {'x86_64': 'c' * 64},
                     'dcmcp_tunnel_checksums': {'x86_64': 'd' * 64}}
         name = module.expected_release(defaults, 'x86_64')
-        self.assertEqual(name, 'dc-0.3.1-aaaaaaaaaaaa-node-24.21.0-tunnel-0.0.16-x86_64')
+        self.assertEqual(name, 'dc-v2-0.3.1-aaaaaaaaaaaa-node-24.21.0-openai-tunnel-0.0.16-x86_64')
         manifest = module.expected_manifest(defaults, 'x86_64')
         self.assertEqual(manifest['node_sha256'], 'c' * 64)
         self.assertEqual(manifest['tunnel_sha256'], 'd' * 64)

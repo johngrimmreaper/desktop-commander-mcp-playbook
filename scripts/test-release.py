@@ -33,10 +33,10 @@ def main():
         raise RuntimeError("Run this check as the existing non-root runtime user.")
     run(["sudo", "-n", "true"])
     defaults = yaml.safe_load((ROOT / "roles/dcmcp/defaults/main.yml").read_text())
-    release_id = (f"dc-{defaults['dcmcp_desktop_version']}-"
+    release_id = (f"dc-v2-{defaults['dcmcp_desktop_version']}-"
                   f"{defaults['dcmcp_desktop_revision'][:12]}-"
                   f"node-{defaults['dcmcp_node_version']}-"
-                  f"tunnel-{defaults['dcmcp_tunnel_version']}-{os.uname().machine}")
+                  f"openai-tunnel-{defaults['dcmcp_tunnel_version']}-{os.uname().machine}")
     release = PREFIX / "releases" / release_id
     if not (release / "release.json").is_file():
         raise RuntimeError(f"The target pinned release is not staged: {release_id}")
@@ -67,6 +67,7 @@ def main():
             def reuse(release_id, expected):
                 variables = {
                     "ansible_facts": {"architecture": os.uname().machine},
+                    "dcmcp_transport": "openai_tunnel",
                     "dcmcp_user": account.pw_name, "dcmcp_gid": account.pw_gid,
                     "dcmcp_uid": account.pw_uid, "dcmcp_home": str(home),
                     "dcmcp_workdir": account.pw_dir, "dcmcp_release_id": release_id,

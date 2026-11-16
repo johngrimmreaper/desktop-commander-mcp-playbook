@@ -1,7 +1,7 @@
 ---
 # REQUIRED: set dcmcp_user explicitly in an untracked local inventory.
 # Never infer it from the Ansible connection account or default to mcp_operator/root.
-# Each tunnel client and MCP child uses the selected account's passwd HOME.
+# Each selected MCP transport uses the configured account's real passwd HOME.
 # All per-instance system files are namespaced by dcmcp_user.
 # The account and its existing sudo rights remain unchanged.
 dcmcp_home: "{{ dcmcp_account_home }}"
@@ -23,10 +23,10 @@ dcmcp_tunnel_config: "{{ dcmcp_config_dir }}/tunnel.yaml"
 dcmcp_runtime_key: "{{ dcmcp_config_dir }}/runtime.key"
 dcmcp_desktop_config: "{{ dcmcp_account_home }}/.claude-server-commander/config.json"
 
-# Select a transport explicitly for new deployments. The default preserves
-# existing OpenAI tunnel inventories; stdio needs no vendor account or tunnel.
-# A different account is recommended for each independent transport instance.
-dcmcp_transport: openai_tunnel
+# Standard MCP stdio is the default for every installation.
+# Optional provider-specific transports must be explicitly selected.
+# No compatibility with releases installed before this transport split.
+dcmcp_transport: stdio
 
 # Version + source revision are explicit; no @latest, npx or floating branch.
 dcmcp_desktop_version: "0.3.1"
@@ -48,7 +48,7 @@ dcmcp_tunnel_arches:
   x86_64: amd64
   aarch64: arm64
 dcmcp_release_id: >-
-  dc-{{ dcmcp_desktop_version }}-{{ dcmcp_desktop_revision[:12] }}-node-{{ dcmcp_node_version }}-{{ ('tunnel-' + dcmcp_tunnel_version) if dcmcp_transport == 'openai_tunnel' else 'stdio' }}-{{ ansible_facts['architecture'] }}
+  dc-v2-{{ dcmcp_desktop_version }}-{{ dcmcp_desktop_revision[:12] }}-node-{{ dcmcp_node_version }}-{{ 'openai-tunnel-' + dcmcp_tunnel_version if dcmcp_transport == 'openai_tunnel' else 'stdio' }}-{{ ansible_facts['architecture'] }}
 # Override this with an installed release ID for rollback. Never a path.
 dcmcp_target_release: "{{ dcmcp_release_id }}"
 # Force a restart when needed; otherwise activation compares its input fingerprint.

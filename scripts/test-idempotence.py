@@ -78,7 +78,8 @@ def main():
         inventory.write_text(
             "all:\n  children:\n    mcp_servers:\n      hosts:\n        localhost:\n"
             "          ansible_connection: local\n"
-            "          dcmcp_user: " + account.pw_name + "\n")
+            "          dcmcp_user: " + account.pw_name + "\n"
+            "          dcmcp_transport: openai_tunnel\n")
         env = os.environ.copy()
         env["ANSIBLE_CONFIG"] = str(ROOT / "ansible.cfg")
         command = ["ansible-playbook", "-i", str(inventory), "playbooks/install.yml"]

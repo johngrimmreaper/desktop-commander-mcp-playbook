@@ -61,7 +61,7 @@
       - |
         import pathlib, stat, sys
         uid = int(sys.argv[1])
-        tunnel_home = pathlib.Path(sys.argv[2])
+        runtime_home = pathlib.Path(sys.argv[2])
         account_home = pathlib.Path(sys.argv[3])
         groups = {
             0: [
@@ -78,15 +78,15 @@
                 pathlib.Path(sys.argv[7]),
             ],
             uid: [
-                tunnel_home,
+                runtime_home,
                 account_home / ".claude-server-commander",
             ],
         }
         # Unused OpenAI credential paths must not restrict stdio clients.
         if sys.argv[8] == "openai_tunnel":
             groups[uid].extend([
-                tunnel_home / ".config",
-                tunnel_home / ".config/desktop-commander-mcp",
+                runtime_home / ".config",
+                runtime_home / ".config/desktop-commander-mcp",
             ])
         for owner, paths in groups.items():
             for path in paths:

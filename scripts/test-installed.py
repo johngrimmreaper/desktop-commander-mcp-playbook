@@ -151,7 +151,8 @@ def test_missing_configuration(account, release):
         inventory.write_text(
             "all:\n  children:\n    mcp_servers:\n      hosts:\n        localhost:\n"
             "          ansible_connection: local\n"
-            "          dcmcp_user: " + account.pw_name + "\n")
+            "          dcmcp_user: " + account.pw_name + "\n"
+            "          dcmcp_transport: openai_tunnel\n")
         for playbook in ("preflight", "activate"):
             run(["ansible-playbook", "-i", str(inventory),
                  f"playbooks/{playbook}.yml"], expected=2)

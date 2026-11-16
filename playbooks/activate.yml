@@ -9,10 +9,10 @@
       ansible.builtin.include_role:
         name: dcmcp
         tasks_from: activate-stdio
-      when: dcmcp_transport | default('openai_tunnel') == 'stdio'
+      when: dcmcp_transport | default('stdio') == 'stdio'
 
     - name: Activate the optional OpenAI tunnel service
       ansible.builtin.include_role:
         name: dcmcp
         tasks_from: activate
-      when: dcmcp_transport | default('openai_tunnel') == 'openai_tunnel'
+      when: dcmcp_transport | default('stdio') == 'openai_tunnel'
