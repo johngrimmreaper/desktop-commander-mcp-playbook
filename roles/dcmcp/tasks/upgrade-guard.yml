@@ -4,6 +4,12 @@
 - name: Validate the host and versioned target before an upgrade
   ansible.builtin.import_tasks: context.yml
 
+- name: Require systemd tunnel mode for daemon upgrades
+  ansible.builtin.assert:
+    that:
+      - dcmcp_transport == 'openai_tunnel'
+    fail_msg: Stdio releases are upgraded with install.yml then activate.yml.
+
 - name: Require the upgrade target to be the release being staged
   ansible.builtin.assert:
     that:

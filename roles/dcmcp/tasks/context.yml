@@ -10,6 +10,12 @@
       untracked inventory/hosts.yml before running any playbook.
       No default or automatic account selection is allowed.
 
+- name: Require a supported MCP transport
+  ansible.builtin.assert:
+    that:
+      - dcmcp_transport in ['stdio', 'openai_tunnel']
+    fail_msg: Set dcmcp_transport to stdio or openai_tunnel.
+
 - name: Require the supported native Linux systemd baseline
   ansible.builtin.assert:
     that:

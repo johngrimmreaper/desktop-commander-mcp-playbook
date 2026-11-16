@@ -5,7 +5,14 @@
   gather_facts: true
   serial: 1
   tasks:
-    - name: Run the activate operation
+    - name: Activate vendor-neutral stdio entrypoint
+      ansible.builtin.include_role:
+        name: dcmcp
+        tasks_from: activate-stdio
+      when: dcmcp_transport | default('openai_tunnel') == 'stdio'
+
+    - name: Activate the optional OpenAI tunnel service
       ansible.builtin.include_role:
         name: dcmcp
         tasks_from: activate
+      when: dcmcp_transport | default('openai_tunnel') == 'openai_tunnel'

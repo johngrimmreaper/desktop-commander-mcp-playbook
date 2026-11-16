@@ -86,12 +86,14 @@ class DistroPackagesTests(unittest.TestCase):
         releases = yaml.safe_load((TASKS / "release.yml").read_text())
         relabels = [item for item in tasks + releases
                     if "restorecon" in str(item.get("ansible.builtin.command", ""))]
-        self.assertEqual(len(relabels), 2)
+        self.assertEqual(len(relabels), 3)
         for item in relabels:
             args = item["ansible.builtin.command"]["argv"]
             self.assertEqual(args[:2], ["/usr/bin/env", "restorecon"])
             self.assertIn("dcmcp_selinux_mode", str(item["when"]))
             self.assertNotIn("/home", str(args))
+            if "/etc/systemd/system/" in str(args):
+                self.assertIn("dcmcp_transport == 'openai_tunnel'", item["when"])
 
 
 if __name__ == "__main__":

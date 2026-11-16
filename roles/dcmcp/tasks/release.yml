@@ -2,17 +2,23 @@
 - name: Define the desired release manifest
   ansible.builtin.set_fact:
     dcmcp_manifest:
-      schema: 1
+      schema: "{{ 1 if dcmcp_transport == 'openai_tunnel' else 2 }}"
       desktop_version: "{{ dcmcp_desktop_version }}"
       desktop_revision: "{{ dcmcp_desktop_revision }}"
       lock_blob: "{{ dcmcp_lock_blob }}"
       node_version: "{{ dcmcp_node_version }}"
       node_sha256: "{{ dcmcp_node_checksums[ansible_facts['architecture']] }}"
-      tunnel_version: "{{ dcmcp_tunnel_version }}"
-      tunnel_sha256: "{{ dcmcp_tunnel_checksums[ansible_facts['architecture']] }}"
       architecture: "{{ ansible_facts['architecture'] }}"
     dcmcp_release_path: "{{ dcmcp_prefix }}/releases/{{ dcmcp_release_id }}"
     dcmcp_stage_path: "{{ dcmcp_prefix }}/releases/.{{ dcmcp_release_id }}.{{ dcmcp_user }}.staging"
+
+- name: Record selected transport in the immutable manifest
+  ansible.builtin.set_fact:
+    dcmcp_manifest: >-
+      {{ dcmcp_manifest | combine(
+           {'tunnel_version': dcmcp_tunnel_version,
+            'tunnel_sha256': dcmcp_tunnel_checksums[ansible_facts['architecture']]}
+           if dcmcp_transport == 'openai_tunnel' else {'transport': 'stdio'}) }}
 
 - name: Inspect the desired release directory
   ansible.builtin.stat:
@@ -260,25 +266,25 @@
         group: root
         mode: "0644"
         validate_certs: true
-
+      when: dcmcp_transport == 'openai_tunnel'
     - name: Create the tunnel release directory
       ansible.builtin.file:
         path: "{{ dcmcp_stage_path }}/tunnel"
         state: directory
         mode: "0755"
-
+      when: dcmcp_transport == 'openai_tunnel'
     - name: Extract the verified tunnel client bundle
       ansible.builtin.unarchive:
         src: "/var/cache/desktop-commander-mcp/tunnel-{{ dcmcp_tunnel_version }}-{{ ansible_facts['architecture'] }}.zip"
         dest: "{{ dcmcp_stage_path }}/tunnel"
         remote_src: true
-
+      when: dcmcp_transport == 'openai_tunnel'
     - name: Ensure the released client is executable
       ansible.builtin.file:
         path: "{{ dcmcp_stage_path }}/tunnel/tunnel-client"
         state: file
         mode: "0755"
-
+      when: dcmcp_transport == 'openai_tunnel'
     - name: Check the tunnel client version without starting a daemon
       ansible.builtin.command:
         argv: ["{{ dcmcp_stage_path }}/tunnel/tunnel-client", --version]
@@ -288,7 +294,7 @@
         dcmcp_tunnel_version_check.rc != 0 or
         not (dcmcp_tunnel_version_check.stdout is search('(^|[^0-9])v?' +
         (dcmcp_tunnel_version | regex_escape) + '([^0-9]|$)'))
-
+      when: dcmcp_transport == 'openai_tunnel'
     - name: Write the completion manifest only after successful build checks
       ansible.builtin.copy:
         content: "{{ dcmcp_manifest | to_nice_json }}\n"

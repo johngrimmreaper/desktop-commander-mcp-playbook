@@ -18,3 +18,23 @@
   environment:
     HOME: "{{ dcmcp_home }}"
   changed_when: false
+  when: dcmcp_transport == 'openai_tunnel'
+
+- name: Validate vendor-neutral stdio installation without OpenAI credentials
+  become: true
+  become_user: "{{ dcmcp_user }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ dcmcp_helpers }}/preflight.py"
+      - --user
+      - "{{ dcmcp_user }}"
+      - --workdir
+      - "{{ dcmcp_workdir }}"
+      - --release
+      - "{{ dcmcp_prefix }}/releases/{{ dcmcp_target_release }}"
+      - --stdio
+  environment:
+    HOME: "{{ dcmcp_home }}"
+  changed_when: false
+  when: dcmcp_transport == 'stdio'

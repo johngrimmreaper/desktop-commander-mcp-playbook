@@ -9,10 +9,49 @@
       - dcmcp_desktop_revision is match('^[0-9a-f]{40}$')
       - dcmcp_lock_blob is match('^[0-9a-f]{40}$')
       - dcmcp_node_version is match('^24\.[0-9]+\.[0-9]+$')
-      - dcmcp_tunnel_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
       - dcmcp_node_checksums[ansible_facts['architecture']] is match('^[0-9a-f]{64}$')
-      - dcmcp_tunnel_checksums[ansible_facts['architecture']] is match('^[0-9a-f]{64}$')
-    fail_msg: Pin compatible versions, source/lock SHAs and both archive checksums before installing.
+      - dcmcp_transport != 'openai_tunnel' or dcmcp_tunnel_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+      - dcmcp_transport != 'openai_tunnel' or dcmcp_tunnel_checksums[ansible_facts['architecture']] is match('^[0-9a-f]{64}$')
+    fail_msg: Pin source, Node and any selected transport artifact checksums before installing.
+
+- name: Inspect an existing OpenAI systemd unit before altering deployment state
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ dcmcp_service }}"
+    follow: false
+  register: dcmcp_transport_existing_unit
+  when: dcmcp_transport == 'stdio'
+
+- name: Prevent in-place transport conversion before any install changes
+  ansible.builtin.assert:
+    that:
+      - not dcmcp_transport_existing_unit.stat.exists
+    fail_msg: Deactivate and uninstall the old OpenAI instance before changing transports.
+  when: dcmcp_transport == 'stdio'
+
+- name: Detect whether an existing stdio instance is selected
+  ansible.builtin.stat:
+    path: "{{ dcmcp_current }}"
+    follow: false
+  register: dcmcp_transport_selector
+  when: dcmcp_transport == 'openai_tunnel'
+
+- name: Check existing systemd service before upgrading a stdio-only account
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ dcmcp_service }}"
+    follow: false
+  register: dcmcp_tunnel_existing_unit
+  when:
+    - dcmcp_transport == 'openai_tunnel'
+    - dcmcp_transport_selector.stat.islnk | default(false)
+
+- name: Prevent conversion of an existing stdio instance to OpenAI in place
+  ansible.builtin.assert:
+    that:
+      - dcmcp_tunnel_existing_unit.stat.exists | default(false)
+    fail_msg: Uninstall the prior stdio instance before adding OpenAI daemon mode.
+  when:
+    - dcmcp_transport == 'openai_tunnel'
+    - dcmcp_transport_selector.stat.islnk | default(false)
 
 - name: Reject unexpected filesystem objects before changing installation paths
   ansible.builtin.command:
@@ -40,11 +79,15 @@
             ],
             uid: [
                 tunnel_home,
-                tunnel_home / ".config",
-                tunnel_home / ".config/desktop-commander-mcp",
                 account_home / ".claude-server-commander",
             ],
         }
+        # Unused OpenAI credential paths must not restrict stdio clients.
+        if sys.argv[8] == "openai_tunnel":
+            groups[uid].extend([
+                tunnel_home / ".config",
+                tunnel_home / ".config/desktop-commander-mcp",
+            ])
         for owner, paths in groups.items():
             for path in paths:
                 for parent in path.parents:
@@ -61,6 +104,7 @@
       - "{{ dcmcp_helpers }}"
       - "{{ dcmcp_examples }}"
       - "{{ dcmcp_state_dir }}"
+      - "{{ dcmcp_transport }}"
   changed_when: false
 
 - name: Install distribution-specific OS dependencies
@@ -91,6 +135,7 @@
     path: "{{ dcmcp_home }}/.config"
     follow: false
   register: dcmcp_xdg_parent
+  when: dcmcp_transport == 'openai_tunnel'
 
 - name: Create the XDG parent only when absent
   ansible.builtin.file:
@@ -99,9 +144,11 @@
     owner: "{{ dcmcp_user }}"
     group: "{{ dcmcp_gid }}"
     mode: "0700"
-  when: not dcmcp_xdg_parent.stat.exists
+  when:
+    - dcmcp_transport == 'openai_tunnel'
+    - not dcmcp_xdg_parent.stat.exists | default(false)
 
-- name: Create runtime directories without writing active configuration files
+- name: Create the Desktop Commander configuration directory without active files
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -109,8 +156,16 @@
     group: "{{ dcmcp_gid }}"
     mode: "0700"
   loop:
-    - "{{ dcmcp_config_dir }}"
     - "{{ dcmcp_account_home }}/.claude-server-commander"
+
+- name: Create private OpenAI tunnel configuration directory when selected
+  ansible.builtin.file:
+    path: "{{ dcmcp_config_dir }}"
+    state: directory
+    owner: "{{ dcmcp_user }}"
+    group: "{{ dcmcp_gid }}"
+    mode: "0700"
+  when: dcmcp_transport == 'openai_tunnel'
 
 - name: Require an existing runtime working directory
   ansible.builtin.stat:
@@ -134,21 +189,23 @@
     group: root
     mode: "0755"
 
-- name: Install the managed daemon readiness helper
+- name: Install the OpenAI managed daemon readiness helper
   ansible.builtin.copy:
     src: readiness.py
     dest: "{{ dcmcp_helpers }}/readiness.py"
     owner: root
     group: root
     mode: "0755"
+  when: dcmcp_transport == 'openai_tunnel'
 
-- name: Install the foreground supervisor launcher
+- name: Install the OpenAI tunnel supervisor launcher
   ansible.builtin.template:
     src: run.py.j2
     dest: "{{ dcmcp_helpers }}/run"
     owner: root
     group: root
     mode: "0755"
+  when: dcmcp_transport == 'openai_tunnel'
 
 - name: Install the MCP stdio child launcher
   ansible.builtin.template:
@@ -176,7 +233,8 @@
   loop:
     - {src: tunnel.yaml.example.j2, dest: tunnel.yaml.example}
     - {src: desktop-commander.json.example.j2, dest: desktop-commander.json.example}
-    - {src: configuration.md.j2, dest: configuration.md}
+    - {src: "{{ 'configuration-stdio.md.j2' if dcmcp_transport == 'stdio' else 'configuration.md.j2' }}", dest: configuration.md}
+  when: dcmcp_transport == 'openai_tunnel' or item.dest != 'tunnel.yaml.example'
 
 - name: Inspect whether a systemd unit already exists
   ansible.builtin.stat:
@@ -186,7 +244,7 @@
 - name: Record unit existence before installing the new definition
   ansible.builtin.service_facts:
 
-- name: Install the systemd unit without starting or restarting it
+- name: Install the OpenAI tunnel systemd unit without starting it
   ansible.builtin.template:
     src: desktop-commander-mcp.service.j2
     dest: "/etc/systemd/system/{{ dcmcp_service }}"
@@ -194,10 +252,11 @@
     group: root
     mode: "0644"
   notify: Reload systemd
+  when: dcmcp_transport == 'openai_tunnel'
 
 # Apply the host's standard SELinux contexts to managed helpers and unit.
 # This never adds policy rules, modifies arbitrary files or disables SELinux.
-- name: Restore SELinux contexts of generated helpers and service definition
+- name: Restore SELinux contexts of generated helpers and examples
   ansible.builtin.command:
     argv:
       - /usr/bin/env
@@ -206,10 +265,23 @@
       - -v
       - "{{ dcmcp_helpers }}"
       - "{{ dcmcp_examples }}"
-      - "/etc/systemd/system/{{ dcmcp_service }}"
   register: dcmcp_helpers_relabel
   changed_when: dcmcp_helpers_relabel.stdout | length > 0
   when:
+    - ansible_facts['distribution'] in ['RedHat', 'Fedora']
+    - dcmcp_selinux_mode.stdout in ['Enforcing', 'Permissive']
+
+- name: Restore SELinux context of the optional OpenAI service definition
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/env
+      - restorecon
+      - -v
+      - "/etc/systemd/system/{{ dcmcp_service }}"
+  register: dcmcp_unit_relabel
+  changed_when: dcmcp_unit_relabel.stdout | length > 0
+  when:
+    - dcmcp_transport == 'openai_tunnel'
     - ansible_facts['distribution'] in ['RedHat', 'Fedora']
     - dcmcp_selinux_mode.stdout in ['Enforcing', 'Permissive']
 
@@ -221,6 +293,7 @@
     name: "{{ dcmcp_service }}"
     enabled: false
   when:
+    - dcmcp_transport == 'openai_tunnel'
     - not dcmcp_existing_unit.stat.exists
     - dcmcp_service not in ansible_facts['services']
 
@@ -228,9 +301,10 @@
   ansible.builtin.command:
     argv: [/usr/bin/systemd-analyze, verify, "/etc/systemd/system/{{ dcmcp_service }}"]
   changed_when: false
+  when: dcmcp_transport == 'openai_tunnel'
 
 - name: Show the staged release identifier
   ansible.builtin.debug:
     msg: >-
-      Installed {{ dcmcp_release_id }}. No active configs were copied,
-      no current-release selector was changed, and activation is a separate playbook.
+      Installed {{ dcmcp_release_id }} for {{ dcmcp_transport }}. No active configs were
+      copied and no current-release selector was changed. Activation is separate.

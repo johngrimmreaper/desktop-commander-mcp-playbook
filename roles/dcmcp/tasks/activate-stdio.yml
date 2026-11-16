@@ -1,0 +1,47 @@
+---
+- name: Validate independent stdio MCP installation
+  ansible.builtin.import_tasks: preflight.yml
+
+- name: Reject a systemd tunnel service for this runtime account
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ dcmcp_service }}"
+    follow: false
+  register: dcmcp_stdio_unit
+
+- name: Require stdio to use a transport-independent instance
+  ansible.builtin.assert:
+    that:
+      - not dcmcp_stdio_unit.stat.exists
+    fail_msg: The OpenAI tunnel unit still exists; deactivate/uninstall before switching transport.
+
+- name: Inspect an existing release selector without following it
+  ansible.builtin.stat:
+    path: "{{ dcmcp_current }}"
+    follow: false
+  register: dcmcp_stdio_selector
+
+- name: Reject a selector owned by a different deployment
+  ansible.builtin.assert:
+    that:
+      - dcmcp_stdio_selector.stat.islnk | default(false)
+      - dcmcp_stdio_selector.stat.uid == 0
+      - dcmcp_stdio_selector.stat.lnk_source is match('^/opt/desktop-commander-mcp/releases/[A-Za-z0-9][A-Za-z0-9._-]{1,180}$')
+    fail_msg: An unexpected release selector already exists.
+  when: dcmcp_stdio_selector.stat.exists | default(false) or dcmcp_stdio_selector.stat.islnk | default(false)
+
+- name: Select the verified stdio release without starting a service
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - "{{ dcmcp_helpers }}/select-release.py"
+      - "{{ dcmcp_target_release }}"
+      - "{{ dcmcp_user }}"
+  when: dcmcp_stdio_selector.stat.lnk_source | default('') != dcmcp_prefix + '/releases/' + dcmcp_target_release
+  changed_when: true
+
+- name: Describe the client-controlled stdio lifecycle
+  ansible.builtin.debug:
+    msg: >-
+      Selected {{ dcmcp_target_release }}. MCP clients invoke
+      {{ dcmcp_helpers }}/mcp-child as {{ dcmcp_user }} on demand;
+      no persistent tunnel or service was started.

@@ -316,19 +316,27 @@ def validate_release(ctx, release, runner=probe):
             "The installed release must be a real root-owned directory.")
     manifest_bytes = read_file(release / "release.json", 0)
     manifest = parse_json(manifest_bytes)
-    mapping_keys(manifest, ("schema", "desktop_version", "desktop_revision", "lock_blob",
-                            "node_version", "node_sha256", "tunnel_version", "tunnel_sha256",
-                            "architecture"))
-    require(type(manifest["schema"]) is int and manifest["schema"] == 1,
+    require(type(manifest.get("schema")) is int and manifest["schema"] in (1, 2),
             "Unsupported release manifest schema.")
-    for key in ("desktop_version", "node_version", "tunnel_version"):
+    if manifest["schema"] == 1:
+        mapping_keys(manifest, ("schema", "desktop_version", "desktop_revision", "lock_blob",
+                                "node_version", "node_sha256", "tunnel_version", "tunnel_sha256",
+                                "architecture"))
+    else:
+        mapping_keys(manifest, ("schema", "transport", "desktop_version",
+                                "desktop_revision", "lock_blob", "node_version", "node_sha256",
+                                "architecture"))
+        require(manifest["transport"] == "stdio", "Unknown vendor-neutral release type.")
+    for key in (("desktop_version", "node_version", "tunnel_version") if manifest["schema"] == 1
+                else ("desktop_version", "node_version")):
         require(isinstance(manifest[key], str)
                 and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", manifest[key]),
                 "Release versions are malformed.")
     for key in ("desktop_revision", "lock_blob"):
         require(isinstance(manifest[key], str) and re.fullmatch(r"[0-9a-f]{40}", manifest[key]),
                 "A source integrity pin is malformed.")
-    for key in ("node_sha256", "tunnel_sha256"):
+    for key in (("node_sha256", "tunnel_sha256") if manifest["schema"] == 1
+                else ("node_sha256",)):
         require(isinstance(manifest[key], str) and re.fullmatch(r"[0-9a-f]{64}", manifest[key]),
                 "An archive integrity pin is malformed.")
     require(manifest["architecture"] == os.uname().machine,
@@ -336,8 +344,10 @@ def validate_release(ctx, release, runner=probe):
     node_version = tuple(map(int, manifest["node_version"].split(".")))
     require(node_version[0] == 24 and node_version >= (22, 12, 0),
             "This project supports Node 24; Desktop Commander requires a modern Node runtime.")
-    for binary in (release / "node/bin/node", release / "tunnel/tunnel-client",
-                   *REQUIRED_SYSTEM_EXECUTABLES):
+    binaries = (release / "node/bin/node", *REQUIRED_SYSTEM_EXECUTABLES)
+    if manifest["schema"] == 1:
+        binaries += (release / "tunnel/tunnel-client",)
+    for binary in binaries:
         require(binary.is_file() and os.access(binary, os.X_OK),
                 "A required executable is missing or not executable.")
         resolved = binary.resolve(strict=True)
@@ -352,9 +362,10 @@ def validate_release(ctx, release, runner=probe):
             "The installed Desktop Commander package version differs from the manifest.")
     require(runner([str(release / "node/bin/node"), "--version"], ctx, release)
             == "v" + manifest["node_version"], "The installed Node version differs from the manifest.")
-    version = runner([str(release / "tunnel/tunnel-client"), "--version"], ctx, release)
-    require(re.search(r"(?<![0-9])v?" + re.escape(manifest["tunnel_version"]) + r"(?![0-9.])",
-                      version), "The installed tunnel client version differs from the manifest.")
+    if manifest["schema"] == 1:
+        version = runner([str(release / "tunnel/tunnel-client"), "--version"], ctx, release)
+        require(re.search(r"(?<![0-9])v?" + re.escape(manifest["tunnel_version"]) + r"(?![0-9.])",
+                          version), "The installed tunnel client version differs from the manifest.")
     runner([str(release / "node/bin/node"), "--check", str(entry)], ctx, release)
     runner([str(release / "node/bin/node"), str(release / "node/lib/node_modules/npm/bin/npm-cli.js"),
             "--version"], ctx, release)
@@ -385,6 +396,8 @@ def validate(ctx, release=None, check_port=False, runner=probe):
     validate_desktop(parse_json(desktop_bytes))
     validate_key(key_bytes)
     release, manifest_bytes = validate_release(ctx, release or ctx.current, runner)
+    require(parse_json(manifest_bytes)["schema"] == 1,
+            "OpenAI tunnel activation requires a tunnel-enabled release.")
     helper_bytes = [read_file(ctx.helpers / name, 0)
                     for name in ("preflight.py", "readiness.py", "run", "mcp-child")]
     unit_bytes = read_file(ctx.unit, 0)
@@ -405,6 +418,20 @@ def validate(ctx, release=None, check_port=False, runner=probe):
     return digest.hexdigest()
 
 
+def validate_stdio(ctx, release, runner=probe):
+    """Validate vendor-independent MCP installation without OpenAI credentials."""
+    validate_runtime_context(ctx)
+    private_directory(ctx.desktop_config.parent, ctx.uid)
+    validate_desktop(parse_json(read_file(ctx.desktop_config, ctx.uid, private=True)))
+    selected, manifest_bytes = validate_release(ctx, release, runner)
+    require(parse_json(manifest_bytes)["schema"] == 2,
+            "Stdio activation requires a vendor-independent release.")
+    child = ctx.helpers / "mcp-child"
+    read_file(child, 0)
+    require(os.access(child, os.X_OK), "The vendor-independent MCP launcher is not executable.")
+    return selected
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", required=True,
@@ -414,6 +441,8 @@ def main():
     parser.add_argument("--account-home",
                         help="Override passwd home only for isolated offline test fixtures")
     parser.add_argument("--release")
+    parser.add_argument("--stdio", action="store_true",
+                        help="Validate standard MCP stdio without any tunnel configuration")
     parser.add_argument("--release-only", action="store_true",
                         help="Validate immutable artifacts without requiring active configuration")
     parser.add_argument("--fingerprint", action="store_true")
@@ -425,11 +454,17 @@ def main():
                       absolute_path(args.workdir or account.pw_dir),
                       absolute_path(args.account_home or account.pw_dir))
         if args.release_only:
-            require(args.release and not args.fingerprint and not args.check_port,
+            require(args.release and not args.fingerprint and not args.check_port
+                    and not args.stdio,
                     "Release-only validation requires --release without activation options.")
             validate_runtime_context(ctx)
             validate_release(ctx, args.release)
             result = "Release validation passed (offline; no active configuration required)."
+        elif args.stdio:
+            require(args.release and not args.fingerprint and not args.check_port,
+                    "Stdio preflight requires --release without tunnel activation options.")
+            validate_stdio(ctx, args.release)
+            result = "Stdio preflight passed (offline; no tunnel credentials required)."
         else:
             result = validate(ctx, args.release, args.check_port)
     except InvalidConfig as error:
@@ -439,7 +474,7 @@ def main():
         print("Preflight failed: required files, user or dependencies are unavailable/invalid.",
               file=sys.stderr)
         return 78
-    print(result if args.fingerprint or args.release_only
+    print(result if args.fingerprint or args.release_only or args.stdio
           else "Preflight passed (offline; no daemon or MCP started).")
     return 0
 

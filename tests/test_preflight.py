@@ -164,6 +164,7 @@ class PreflightTests(unittest.TestCase):
             dcmcp_home=str(self.ctx.home), dcmcp_account_home=str(self.ctx.account_home),
             dcmcp_user=self.ctx.user, dcmcp_uid=self.ctx.uid,
             dcmcp_current=str(self.ctx.current))
+        self.assertIn('"$(/usr/bin/id -u)" != "' + str(self.ctx.uid) + '"', rendered)
         self.assertIn("export HOME=" + shlex.quote(str(self.ctx.account_home)), rendered)
         self.assertIn(f"export XDG_RUNTIME_DIR=/run/user/{self.ctx.uid}", rendered)
         self.assertIn(f"unix:path=/run/user/{self.ctx.uid}/bus", rendered)
@@ -180,6 +181,41 @@ class PreflightTests(unittest.TestCase):
         first = self.validate()
         self.assertRegex(first, r"^[0-9a-f]{64}$")
         self.assertEqual(first, self.validate())
+
+    def use_stdio_manifest(self):
+        manifest = {key: value for key, value in self.manifest.items()
+                    if key not in ("tunnel_version", "tunnel_sha256")}
+        manifest.update(schema=2, transport="stdio")
+        self.write(self.release / "release.json", json.dumps(manifest), 0o644)
+        return manifest
+
+    def validate_stdio(self):
+        test = self
+        def root_owned_lstat(path, *args, **kwargs):
+            return test.fake_lstat(path, *args, **kwargs)
+        with patch.object(Path, "lstat", root_owned_lstat), \
+                patch.object(pf, "read_file", side_effect=self.installed_read), \
+                patch.object(pf, "REQUIRED_SYSTEM_EXECUTABLES", self.system_executables):
+            return pf.validate_stdio(self.ctx, self.release, runner=self.fake_probe)
+
+    def test_vendor_neutral_stdio_needs_no_tunnel_credentials_or_binary(self):
+        self.use_stdio_manifest()
+        self.ctx.config.unlink()
+        self.ctx.key.unlink()
+        (self.release / "tunnel/tunnel-client").unlink()
+        self.assertEqual(self.release, self.validate_stdio())
+        self.assert_invalid(self.validate)  # OpenAI mode must not accept this bundle.
+
+    def test_vendor_neutral_stdio_rejects_wrong_manifest_or_missing_config(self):
+        self.assert_invalid(self.validate_stdio)  # No fallback to an OpenAI-only release.
+        self.use_stdio_manifest()
+        self.ctx.desktop_config.unlink()
+        self.assert_invalid(self.validate_stdio)
+
+    def test_vendor_neutral_stdio_rejects_missing_launcher(self):
+        self.use_stdio_manifest()
+        (self.ctx.helpers / "mcp-child").unlink()
+        self.assert_invalid(self.validate_stdio)
 
     def test_runtime_key_rotation_changes_fingerprint(self):
         before = self.validate()

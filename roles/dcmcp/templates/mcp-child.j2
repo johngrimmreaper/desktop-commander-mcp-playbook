@@ -1,9 +1,15 @@
 #!/bin/sh
-# Tunnel authentication and MCP configuration share the selected user's real HOME.
-# Run Desktop Commander with the existing Linux account's home and settings.
+# Vendor-neutral MCP stdio entrypoint. Stdout is reserved for MCP JSON-RPC.
+# Refuse cross-account execution rather than inheriting another user's credentials.
+if [ "$(/usr/bin/id -u)" != "{{ dcmcp_uid }}" ]; then
+    echo "MCP child must run as the selected runtime account." >&2
+    exit 78
+fi
+# Use the existing account's home and Desktop Commander settings.
 export HOME={{ dcmcp_account_home | quote }}
 export USER={{ dcmcp_user | quote }}
 export LOGNAME={{ dcmcp_user | quote }}
+export NODE_ENV=production
 if [ -d /run/user/{{ dcmcp_uid }} ]; then
     export XDG_RUNTIME_DIR=/run/user/{{ dcmcp_uid }}
     if [ -S /run/user/{{ dcmcp_uid }}/bus ]; then

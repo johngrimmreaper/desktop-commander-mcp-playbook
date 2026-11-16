@@ -23,6 +23,11 @@ dcmcp_tunnel_config: "{{ dcmcp_config_dir }}/tunnel.yaml"
 dcmcp_runtime_key: "{{ dcmcp_config_dir }}/runtime.key"
 dcmcp_desktop_config: "{{ dcmcp_account_home }}/.claude-server-commander/config.json"
 
+# Select a transport explicitly for new deployments. The default preserves
+# existing OpenAI tunnel inventories; stdio needs no vendor account or tunnel.
+# A different account is recommended for each independent transport instance.
+dcmcp_transport: openai_tunnel
+
 # Version + source revision are explicit; no @latest, npx or floating branch.
 dcmcp_desktop_version: "0.3.1"
 dcmcp_desktop_revision: 7251da501d760e6eb5f95d802d9b42c741190950
@@ -43,7 +48,7 @@ dcmcp_tunnel_arches:
   x86_64: amd64
   aarch64: arm64
 dcmcp_release_id: >-
-  dc-{{ dcmcp_desktop_version }}-{{ dcmcp_desktop_revision[:12] }}-node-{{ dcmcp_node_version }}-tunnel-{{ dcmcp_tunnel_version }}-{{ ansible_facts['architecture'] }}
+  dc-{{ dcmcp_desktop_version }}-{{ dcmcp_desktop_revision[:12] }}-node-{{ dcmcp_node_version }}-{{ ('tunnel-' + dcmcp_tunnel_version) if dcmcp_transport == 'openai_tunnel' else 'stdio' }}-{{ ansible_facts['architecture'] }}
 # Override this with an installed release ID for rollback. Never a path.
 dcmcp_target_release: "{{ dcmcp_release_id }}"
 # Force a restart when needed; otherwise activation compares its input fingerprint.

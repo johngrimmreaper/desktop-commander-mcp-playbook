@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Atomically select a complete root-owned release; caller must stop the unit first."""
+"""Atomically select a root-owned release; stop any managed daemon first."""
 import argparse
 import os
 from pathlib import Path

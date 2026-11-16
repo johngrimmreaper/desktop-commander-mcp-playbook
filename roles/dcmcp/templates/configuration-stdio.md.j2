@@ -1,0 +1,26 @@
+# Vendor-neutral MCP stdio configuration companion
+
+The Ansible role installed a pinned Desktop Commander MCP server but did not
+install a vendor tunnel client, a long-running systemd service, or any vendor key.
+
+1. As {{ dcmcp_user }}, run `umask 077` and copy
+   `desktop-commander.json.example` to `{{ dcmcp_desktop_config }}` with `cp -n`.
+2. Keep `{{ dcmcp_desktop_config }}` owned by {{ dcmcp_user }} with mode 0600;
+   the parent directory must be owned by that account and mode 0700.
+3. Run `playbooks/preflight.yml`, then `playbooks/activate.yml` to select the
+   validated release. Neither operation starts a background daemon.
+4. Configure an MCP-capable agent to execute this command as {{ dcmcp_user }}:
+
+   `{{ dcmcp_helpers }}/mcp-child`
+
+The launcher reserves stdout for MCP JSON-RPC, uses the selected account's
+real HOME and refuses execution by another UID. It inherits ordinary filesystem,
+process and sudo rights. The default JSON allows access wherever that account
+is permitted; review `docs/security.md` before granting it to an agent.
+
+For remote CLI clients, use an already-authorized non-interactive SSH session
+(`ssh -T -o BatchMode=yes {{ dcmcp_user }}@YOUR_HOST {{ dcmcp_helpers }}/mcp-child`).
+This is SSH-stdio, not a cloud relay. The client must be able to reach SSH.
+Do not point agents at OpenAI's API hostname or reuse OpenAI tunnel credentials.
+Desktop Commander retains the historical upstream `.claude-server-commander`
+configuration directory name regardless of which AI agent invokes it.
