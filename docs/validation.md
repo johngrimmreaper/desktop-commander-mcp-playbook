@@ -1,5 +1,18 @@
 # Deployment validation
 
+## Vendor-neutral stdio implementation review (2026-11-16)
+
+Introduced a second explicit `dcmcp_transport: stdio` path on a development
+branch, with schema-2 releases containing only the pinned Desktop Commander
+server and Node runtime. The original OpenAI schema-1 release/daemon path
+remains compatible by default for older inventories. Stdio offline preflight
+needs no OpenAI YAML, tunnel binary or runtime key, and validates the common
+Desktop Commander settings and managed launcher. Added regression tests for
+transport isolation and missing launchers. No native stdio agent invocation
+through Gemini, Claude or Codex, and no Solaris deployment, has been performed.
+The historical checks and test counts below refer to earlier revisions.
+
+
 ## Native Omarchy Slim Server deployment and live MCP verification (2026-11-09)
 
 **Validated on one headless, native x86_64 Arch/Omarchy KVM virtual

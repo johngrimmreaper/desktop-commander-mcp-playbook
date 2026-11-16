@@ -165,3 +165,15 @@ was the latest release inspected.
 This document records sources and implementation inferences. It does not claim
 production installation, account eligibility, successful local validation or a host connection.
 Executed test results are recorded separately in [validation.md](validation.md).
+
+## Vendor-neutral MCP boundary (2026-11-16)
+
+Desktop Commander exposes a standard MCP stdio server and upstream documents
+Gemini CLI, Claude Code and Codex client integrations. This Ansible project
+retains the OpenAI tunnel as one optional adapter; its authentication and
+control-plane schema are **not** portable to other vendors. A separate stdio
+installation can be used directly or through a standard SSH command launched
+by an MCP client, with no proprietary relay or OpenAI credentials. Hosted
+web clients without SSH reachability need their own documented transport.
+See the README and security guide; Solaris portability is a future review,
+not an implemented target.

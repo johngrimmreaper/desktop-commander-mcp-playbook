@@ -1,7 +1,9 @@
 # Security boundaries and operator responsibilities
 
-This project installs the official OpenAI Secure MCP Tunnel client and upstream
-Desktop Commander MCP as a native systemd service. It is **not a sandbox**.
+This project installs upstream Desktop Commander MCP as a native Linux program.
+The default-for-new-inventories stdio path launches via MCP clients on demand;
+the optional OpenAI Secure MCP Tunnel transport runs as a managed systemd
+service. **Neither mode is a sandbox.**
 
 ## Execution identity and authority
 
@@ -17,14 +19,22 @@ Desktop Commander MCP as a native systemd service. It is **not a sandbox**.
   upstream restrictions and/or a dedicated less-privileged Linux account if
   narrower access is required. Review the implications before assigning an
   administrative account to a tunnel.
-- The tunnel client and the Desktop Commander MCP child both use the selected
-  account's real passwd `HOME`; private tunnel credentials remain under its
+- In `openai_tunnel` mode, the tunnel client and the Desktop Commander MCP
+  child both use the selected account's real passwd `HOME`; tunnel credentials remain under its
   `.config/desktop-commander-mcp` directory. The working directory defaults there as well.
   Sharing the account's home does not isolate MCP permissions from other
   processes using the same Linux identity.
 
 ## Control plane and secrets
 
+- In `stdio` mode there is **no OpenAI control plane, runtime key, API
+  registration or persistent service**. The local or SSH-connected MCP client
+  starts Desktop Commander as the configured account. Restrict SSH access,
+  use authorized keys with suitable policy, and make sure no login banner or
+  password prompt corrupts stdout MCP messages. The agent gains that user's
+  ordinary host privileges. Two clients invoking the same user can overlap;
+  account isolation and filesystem permissions remain operator responsibilities.
+- The following OpenAI-specific requirements apply **only** to `openai_tunnel`.
 - The tunnel establishes outbound HTTPS; the sample health endpoint listens
   on a per-user loopback port only. Do not forward that port or expose the local admin UI to the
   public network. No inbound MCP firewall opening is needed.
@@ -68,8 +78,12 @@ Desktop Commander MCP as a native systemd service. It is **not a sandbox**.
 
 ## Scope and validation
 
-The current supported backend is the OpenAI Secure MCP Tunnel, not arbitrary
-remote agents. Installation and ChatGPT tool execution were verified on an
+Supported transports are a vendor-neutral MCP stdio launcher and an optional
+OpenAI Secure MCP Tunnel daemon. Arbitrary hosted vendor relay protocols and
+non-SSH-accessible browser-only clients are not implemented. Stdio mode has
+passed offline and synthetic tests but has **not** been verified end-to-end
+with Gemini CLI or Claude Code. OpenAI daemon mode and ChatGPT tool execution
+were verified on an
 RHEL 10.2 x86_64 host with SELinux Enforcing and on Ubuntu 26.04, but this is
 not certification of all distributions, architectures, sudo configurations,
 or upstream MCP tools. SELinux enforcing is retained where present; the role

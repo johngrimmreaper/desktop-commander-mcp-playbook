@@ -1,24 +1,33 @@
-# Desktop Commander MCP + OpenAI Secure MCP Tunnel
+# Desktop Commander MCP: vendor-neutral Ansible installer
 
-Ansible automation for installing the open-source
-[Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP) on
-native Ubuntu 26.04, RHEL 10, Fedora 43/44 or Arch Linux (including
-Omarchy) and running it as a stdio
-child of the official OpenAI client.
-A single systemd service keeps the server available to the OpenAI backend;
-desktop and mobile devices use ChatGPT. The mobile device does not run or
-connect directly to the MCP server.
+Ansible automation for building and installing the open-source
+[Desktop Commander MCP](https://github.com/wonderwhy-er/DesktopCommanderMCP)
+as a pinned native Linux package. The MCP server uses the standard Model
+Context Protocol, independent of any particular AI model or service.
 
-This is a native host daemon. Installation, startup, restarts and tool execution
-do not require Docker, Podman, a container runtime or a Docker socket mount.
-The daemon uses the host's systemd, filesystem and permissions of the
-**explicitly selected existing Linux account**.
+**Two deployment modes:**
 
-Installation stages files and versions. **Only explicit activation starts the
-daemon**, after the operator manually copies and edits the configuration files
-and preflight succeeds. The account/workspace must provide Secure MCP Tunnel
-access and allow connector registration; installing this project does not
-grant that access.
+- **`stdio` (recommended for a new installation):** the agent launches the
+  installed MCP server over standard input/output, locally or through
+  an authorized SSH connection. Works with compatible clients such as Gemini
+  CLI, Claude Code and Codex. No OpenAI key, OpenAI client, registration,
+  outbound relay, always-on daemon or external vendor account is needed.
+- **`openai_tunnel` (backward-compatible):** an optional, separately pinned
+  OpenAI Secure MCP Tunnel client provides outbound-only access from supported
+  OpenAI products, using a managed systemd service. OpenAI-specific credentials,
+  configuration and readiness checks apply only to this mode.
+
+The role runs under an **explicitly selected existing non-root Linux user**
+and never installs a container, creates an account or adds sudo permissions.
+It stages immutable releases first; activation is always a separate explicit
+step. It is not a security sandbox: MCP tools inherit the configured account's
+normal filesystem, process and sudo permissions. Read [security boundaries](docs/security.md).
+
+For old inventories that omit `dcmcp_transport`, the default remains
+`openai_tunnel` to avoid silently changing live installations. The newly
+committed sample inventories explicitly select `stdio`. The two modes are not
+interchangeable in place for an active account; stop and uninstall the prior
+managed installation before switching transports.
 
 ## Supported baseline
 
@@ -30,7 +39,7 @@ grant that access.
 | Controller | Validated locally on Ubuntu 26.04 (Python 3.14) and RHEL 10.2 (Python 3.12), ansible-core 2.21.5; SSH targeting is supported |
 | Desktop Commander | 0.3.1 |
 | Node.js | 24.21.0, installed privately in the versioned release bundle |
-| tunnel-client | 0.0.16, official Linux bundle with a pinned checksum |
+| OpenAI tunnel client (optional) | 0.0.16, pinned and downloaded only for `openai_tunnel` |
 | Lint | ansible-lint 26.9.0; dependencies in requirements-dev.txt |
 | Ansible collection | `community.general` 13.5.0, pinned in `collections/requirements.yml` for the Arch pacman backend |
 
@@ -43,8 +52,8 @@ allowedDirectories empty, following the decision to use existing Linux
 permissions and sudo access. The MCP does not guarantee interactive sudo:
 authentication requirements follow the host's sudo configuration.
 
-This grants a remote ChatGPT plugin substantial authority under the selected
-Linux identity, not a container sandbox. Review the
+Either an MCP client or a remote ChatGPT plugin can gain substantial authority
+under the selected Linux identity; neither transport is a container sandbox. Review the
 [security boundaries and operator responsibilities](docs/security.md) before
 activating a tunnel with access to sensitive projects or sudo.
 
@@ -52,12 +61,107 @@ The host guard rejects unsupported distribution releases, container targets
 and architectures before installing anything. Native Ubuntu 26.04 on x86_64
 has been integration-tested on an Ubuntu test VM. **RHEL 10.2 x86_64 was installed,
 preflighted, activated and verified end-to-end through ChatGPT on a native VM
-with SELinux Enforcing (2026-10-23).** Fedora 43/44, Arch Linux/Omarchy
-rolling, and arm64 have not had native end-to-end validation. These results are host-specific, not blanket
+with SELinux Enforcing (2026-10-23).** A native Omarchy Slim Server installation
+also passed OpenAI tunnel execution on 2026-11-09. Fedora 43/44 and arm64
+still lack end-to-end validation. These results are host-specific, not blanket
 production certification.
 See [validation status](docs/validation.md).
 
-## How it works
+## Vendor-neutral stdio deployment (Gemini CLI, Claude Code, Codex, other MCP clients)
+
+The standard MCP transport is **stdio**, not an OpenAI tunnel. An agent invokes
+`mcp-child` when it needs tools; it communicates directly over stdin/stdout.
+For a remote VM, an ordinary authenticated, non-interactive SSH command carries
+those streams. This is **not** a remote cloud bridge: the agent must have SSH
+network reachability and appropriate credentials. A browser-only agent cannot
+connect merely because it advertises MCP support.
+
+1. Prepare the controller virtual environment and pinned dependencies as in
+   the preparation section below. Copy one of the example inventories to the
+   ignored `inventory/hosts.yml`; set `dcmcp_user` to an existing account and
+   `dcmcp_transport: stdio`. Keep the explicit non-root account requirement.
+2. Run `.venv/bin/ansible-playbook playbooks/install.yml`. It builds a pinned
+   immutable Desktop Commander + Node release, **without** downloading the
+   OpenAI tunnel client or installing an OpenAI daemon.
+3. As the selected user on the target, run:
+
+   ```bash
+   umask 077
+   cp -n "/usr/local/share/desktop-commander-mcp/$(id -un)/desktop-commander.json.example" \
+     "$HOME/.claude-server-commander/config.json"
+   chmod 600 "$HOME/.claude-server-commander/config.json"
+   ```
+
+4. Review/edit this JSON for the access you intend to give AI agents. Its
+   upstream directory name is historical, **not a Claude vendor dependency**.
+   Then from the Ansible controller:
+
+   ```bash
+   .venv/bin/ansible-playbook playbooks/preflight.yml
+   .venv/bin/ansible-playbook playbooks/activate.yml
+   ```
+
+   This checks the release/configuration and sets the account's current-release
+   selector. No daemon is started. Upgrade the stdio installation with the same
+   `install.yml` then `preflight.yml`/`activate.yml` sequence; the separate
+   `upgrade.yml`, health monitor and `doctor.py` are for the OpenAI daemon only.
+
+5. Point any stdio-compatible client at the installed launcher as that account:
+
+   ```text
+   /usr/local/libexec/desktop-commander-mcp/USER/mcp-child
+   ```
+
+   Or use an existing SSH account/key authorized to log in as that runtime
+   account, with an **SSH command launched by the client**:
+
+   ```bash
+   ssh -T -o BatchMode=yes USER@YOUR_VM \
+     /usr/local/libexec/desktop-commander-mcp/USER/mcp-child
+   ```
+
+### Client configuration examples
+
+For **Gemini CLI**, in its existing `settings.json`, add an `mcpServers`
+entry (do not replace unrelated settings):
+
+```json
+{
+  "mcpServers": {
+    "desktop-commander": {
+      "command": "ssh",
+      "args": ["-T", "-o", "BatchMode=yes", "USER@YOUR_VM", "/usr/local/libexec/desktop-commander-mcp/USER/mcp-child"]
+    }
+  }
+}
+```
+
+For **Codex**, add a server entry to its MCP configuration TOML:
+
+```toml
+[mcp_servers.desktop-commander]
+command = "ssh"
+args = ["-T", "-o", "BatchMode=yes", "USER@YOUR_VM", "/usr/local/libexec/desktop-commander-mcp/USER/mcp-child"]
+```
+
+For **Claude Code**, configure a stdio MCP server using its documented `mcp`
+command or MCP settings. Use the same `ssh` executable and argument list.
+For local client installations, substitute the local `mcp-child` command for
+SSH. These are integration examples, **not claims of live Gemini/Claude/Codex
+end-to-end validation**. The client process must authenticate to the target,
+keep stdout free of login banners and prompts, and run under the selected UID.
+Each distinct client session starts its own stdio MCP child. Review concurrent
+access to writable state before attaching multiple agents to one user.
+
+Helpful upstream references: [Gemini CLI MCP setup](https://github.com/google-gemini/gemini-cli/blob/main/docs/tools/mcp-server.md),
+[Claude Code MCP](https://code.claude.com/docs/en/mcp),
+[Desktop Commander installation](https://github.com/wonderwhy-er/DesktopCommanderMCP),
+[Codex MCP](https://developers.openai.com/codex/mcp).
+
+A future Solaris port has a separate [portability audit](docs/solaris-portability.md).
+Solaris is not supported or validated by the current Linux role.
+
+## Optional OpenAI tunnel mode: how it works
 
 Each `desktop-commander-mcp@USER.service` unit runs a launcher with its own lock,
 performs offline preflight and then executes tunnel-client run --config.
@@ -92,10 +196,12 @@ MCP endpoint. Health/UI bind to `127.0.0.1` on an instance-specific port
 requires HTTPS access to GitHub, nodejs.org and registry.npmjs.org, plus the host distribution's enabled trusted package repositories. Optional Desktop Commander features may use other destinations;
 the process's total network traffic is not limited to the OpenAI host.
 
-## 1. Prepare the controller and inventory
+## OpenAI tunnel runbook: 1. Prepare the controller and inventory
 
 For a local deployment on the **validated Ubuntu 26.04 controller**, run these
-commands from the checkout as an operator permitted to use sudo:
+commands from the checkout as an operator permitted to use sudo. **Set
+`dcmcp_transport: openai_tunnel` in the copied sample inventory before the
+installation command** when following this OpenAI-specific runbook:
 
 ```bash
 sudo apt-get update
@@ -121,6 +227,7 @@ all:
           ansible_connection: local
           ansible_python_interpreter: /usr/bin/python3
           dcmcp_user: alice  # REPLACE with an existing non-root Linux user
+          dcmcp_transport: openai_tunnel  # Only for the OpenAI runbook below
 ```
 
 For both standard and detached upgrade operations, use the included
@@ -161,9 +268,9 @@ Each configured `dcmcp_user` identifies a separate instance; setting another
 user does not migrate or overwrite the old account's tunnel. To change the working directory, set
 `dcmcp_workdir` in the ignored inventory and create that directory manually.
 
-This feature selects the Linux runtime user only. **The current tunnel backend
-is still the OpenAI Secure MCP Tunnel**; support for other AI tunnel protocols
-would be a separate feature.
+This configuration selects the Linux runtime user. **The `openai_tunnel` transport is specifically the OpenAI Secure MCP Tunnel**;
+other providers can use the independent stdio path above, but other hosted
+relay protocols require separately implemented adapters.
 
 ### Multiple independent tunnels on one VM
 
@@ -321,7 +428,7 @@ helpers, desktop services, package sources and update cadence remain untouched. 
 use `pacman -Sy` as a workaround for missing dependencies; Arch does not
 support partial upgrades. First native Omarchy VM deployment is not yet proven.
 
-## 2. MANUALLY copy and edit the active files
+## OpenAI tunnel runbook: 2. MANUALLY copy and edit the active files
 
 On the host, use a session belonging to the selected `dcmcp_user` account.
 The role creates private directories but **never copies examples into these active files**:
@@ -379,7 +486,7 @@ or the child's environment. Processes retain the configured Linux user's
 filesystem
 permissions, including access to files that user owns.
 
-## 3. Validate and activate
+## OpenAI tunnel runbook: 3. Validate and activate
 
 On the controller:
 
@@ -417,7 +524,7 @@ Invalid launcher configuration returns 78, preventing a restart loop.
 An activation failure restores the previous selection/enablement and leaves
 the service stopped for diagnosis; it does not declare a healthy rollback.
 
-## 4. Provision the tunnel and connect in ChatGPT/OpenAI
+## OpenAI tunnel runbook: 4. Provision the tunnel and connect in ChatGPT/OpenAI
 
 Check access and permissions before creating the active files:
 

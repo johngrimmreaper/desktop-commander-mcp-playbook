@@ -10,8 +10,9 @@ Omarchy is Arch-based, and has historically reported `ID=arch` in
 `/etc/os-release`. Ansible reports this family as `Archlinux`; our backend
 intentionally covers native Arch as well as Omarchy. It does not depend on
 Hyprland, Wayland, the AUR, an AUR helper, or the user-session systemd manager.
-The production unit remains a root-managed system service, running under the
-explicitly selected existing non-root Linux account.
+For `openai_tunnel`, the production unit remains a root-managed systemd
+service, running under the explicitly selected non-root Linux account. In
+`stdio` mode, no long-running service or OpenAI runtime key is needed.
 
 ## Operator preparation in the new VM
 
@@ -40,16 +41,19 @@ explicitly selected existing non-root Linux account.
    ```
 
 5. Replace the `dcmcp_user` placeholder with the actual existing account.
+   Keep `dcmcp_transport: stdio` for vendor-neutral direct MCP, or explicitly
+   choose `openai_tunnel` to reproduce the verified OpenAI setup.
    Run `playbooks/install.yml` from an independent SSH/console session with
    the required sudo permissions. If necessary, use `--ask-become-pass`.
    Installation stages a release but deliberately does not activate the daemon.
-6. Copy and manually edit the private tunnel/key/desktop configuration files
+6. For OpenAI mode, copy and manually edit the private tunnel/key/desktop files
    described in the main README, run `playbooks/preflight.yml`, and explicitly
    activate with `playbooks/activate.yml` from an independent session. Never
    check real tunnel credentials into Git or reuse an active tunnel ID on a
    second host.
-7. Verify systemd service, local `/readyz`, read-only doctor, journal, and an
-   actual ChatGPT-originated MCP tool call. Record real Omarchy results in
+7. For OpenAI mode, verify systemd service, local `/readyz`, read-only doctor,
+   journal, and an actual ChatGPT-originated MCP tool call. For stdio mode,
+   verify a real MCP tool call from an authorized stdio client instead. Record real Omarchy results in
    `docs/validation.md` only after running them.
 
 ## Backend design and constraints
@@ -59,8 +63,9 @@ explicitly selected existing non-root Linux account.
 - Installs the official repository packages `ca-certificates`, `git`, `xz`,
   `unzip`, `python`, `python-yaml`, `ripgrep`, `base-devel`, `libatomic` via
   `state: present`; does not run `-Sy`, `-Syu` or update desktop components.
-- Reuses pinned private Node/tunnel binaries, source verification, file
-  ownership, immutable releases, systemd and offline preflight.
+- Reuses pinned private Node binaries, source verification, file ownership,
+  immutable releases and offline preflight. The OpenAI mode additionally pins
+  a tunnel client and installs a systemd daemon; stdio does neither.
 - Arch uses explicit `/usr/bin/python3` for systemd launchers; no SELinux
   relabeling is attempted on the standard Arch installation.
 - The destructive native integration test suites remain Ubuntu-only. The
