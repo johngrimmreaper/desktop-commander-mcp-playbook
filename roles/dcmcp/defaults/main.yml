@@ -29,9 +29,9 @@ dcmcp_desktop_config: "{{ dcmcp_account_home }}/.claude-server-commander/config.
 dcmcp_transport: stdio
 
 # Version + source revision are explicit; no @latest, npx or floating branch.
-dcmcp_desktop_version: "0.3.1"
-dcmcp_desktop_revision: 7251da501d760e6eb5f95d802d9b42c741190950
-dcmcp_lock_blob: b1c6da69633e597dab119e1173935523a4d4caa8
+dcmcp_desktop_version: "0.3.4"
+dcmcp_desktop_revision: 9a101b17e44577f0baefa4c7120f087881c5cc56
+dcmcp_lock_blob: bb49e09899880d7266eee515eb6232849b25f1ee
 dcmcp_node_version: "24.21.0"
 dcmcp_tunnel_version: "0.0.16"
 # SHA-256 values obtained from primary sources; see docs/upstream.md.

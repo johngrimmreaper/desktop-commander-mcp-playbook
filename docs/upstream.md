@@ -29,6 +29,26 @@ absent or the service works under Enforcing mode. These decisions need real
 host confirmation. Fedora 45 was still a beta/prerelease at review and is
 not in the supported host allowlist.
 
+## Release refresh on 2026-11-18
+
+Desktop Commander [v0.3.4](https://github.com/wonderwhy-er/DesktopCommanderMCP/releases/tag/v0.3.4)
+was selected for the release refresh. The exact source revision is pinned in
+[the role defaults](../roles/dcmcp/defaults/main.yml).
+The `package-lock.json` Git blob is `bb49e09899880d7266eee515eb6232849b25f1ee`.
+The package requires Node.js 22.12.0 or newer. The installer continues to
+use Node.js 24.21.0 and OpenAI tunnel-client 0.0.16.
+
+The v0.3.4 lockfile has integrity hashes and HTTPS npm registry URLs for
+every dependency. Upstream removed the vendored telemetry-contract package.
+The existing verifier accepts the new lockfile and still checks the vendored
+package when building an older pin that includes it.
+
+On Omarchy x86_64, the Ansible release tasks built both the stdio and OpenAI
+Tunnel bundles in an isolated mount namespace. Both builds passed the existing
+preflight and reported zero changes on reuse. An offline MCP SDK smoke test
+found the same 25 tool names as v0.3.1 in both bundles and exercised
+`get_config`, `list_directory`, and `start_process` over stdio.
+
 ## Release refresh on 2026-10-22
 
 Desktop Commander [v0.3.1](https://github.com/wonderwhy-er/DesktopCommanderMCP/releases/tag/v0.3.1)
