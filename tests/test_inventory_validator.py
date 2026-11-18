@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 import unittest
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 path = ROOT / 'scripts/validate-inventory.py'
 spec = importlib.util.spec_from_file_location('inventory_validator', path)
@@ -38,6 +40,19 @@ class InventoryValidatorTests(unittest.TestCase):
                        local.replace('dcmcp_user: mcp_operator', 'dcmcp_user: &identity mcp_operator\n          ansible_user: *identity')):
             with self.subTest(broken=broken):
                 self.assertFalse(module.valid_inventory(broken))
+
+
+    def test_versioned_system_python_for_local_solaris(self):
+        local = (ROOT / 'inventory/solaris-local.example.yml').read_text().replace(
+            'REPLACE_WITH_EXISTING_SOLARIS_ACCOUNT', 'mcp_operator')
+        self.assertTrue(module.valid_inventory(local))
+        for interpreter in ('python3.13', '/tmp/python3.13', '/usr/bin/python3.13 -E',
+                            '/usr/bin/python3x13', '', None):
+            with self.subTest(interpreter=interpreter):
+                document = yaml.safe_load(local)
+                host = document['all']['children']['mcp_servers']['hosts']['localhost']
+                host['ansible_python_interpreter'] = interpreter
+                self.assertFalse(module.valid_inventory(yaml.safe_dump(document)))
 
 
 if __name__ == '__main__':
