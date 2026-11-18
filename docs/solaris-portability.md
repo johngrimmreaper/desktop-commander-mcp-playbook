@@ -111,10 +111,24 @@ A successful probe establishes local controller execution. Native Desktop
 Commander installation and OpenAI tunnel activation still require the
 Solaris backends listed above and VM acceptance tests.
 
-The supplied CBE package query offered Node.js 20.18.2 and found no installable
-ripgrep or libvips package. The pinned Desktop Commander source requires
-Node.js 22.12 or newer. Its Node runtime, image library, and search runtime
-therefore need native dependency verification before the install role can
+On 2026-11-18, the native VM successfully installed Ansible Core 2.21.5 in
+its Python 3.13 virtual environment and returned `pong` for the local connection.
+The package query listed Node.js 20.18.2 and a Node.js 22.15.1 candidate
+(`runtime/nodejs/nodejs-22`), Rust 1.78.0, and no matching ripgrep or libvips
+packages. IPS returns status 3 for this partial result; the probe accepts it
+and shows both the matching packages and the missing-package diagnostics.
+
+The pinned Desktop Commander source requires Node.js 22.12 or newer.
+Check whether the Node.js 22 package can be installed with the current image
+constraints before changing any packages:
+
+```sh
+sudo pkg install -nv runtime/nodejs/nodejs-22
+```
+
+The `-n` option performs a trial run. A listed candidate does not establish
+that it can be installed without an OS update. The Node runtime, image library,
+and search runtime still need native verification before the install role can
 support this CBE image.
 
 References for the controller bootstrap and dependency checks are the

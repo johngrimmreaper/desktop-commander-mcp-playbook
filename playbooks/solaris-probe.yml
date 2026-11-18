@@ -82,7 +82,9 @@
           - "*vips*"
       register: dcmcp_solaris_packages
       changed_when: false
-      failed_when: dcmcp_solaris_packages.rc not in [0, 1]
+      # pkg list returns 3 when only some patterns match available packages.
+      # Missing optional packages remain visible in the final diagnostics.
+      failed_when: dcmcp_solaris_packages.rc not in [0, 1, 3]
 
     - name: Show the local Solaris inspection results
       ansible.builtin.debug:
