@@ -1,7 +1,8 @@
 # Solaris portability: prerequisites before implementation
 
-**Status (2026-11-16): analysis only.** Neither this Ansible role nor the
-pinned Desktop Commander release has been built or tested on Solaris.
+**Status (2026-11-18): local controller preparation and read-only probe.**
+Native Desktop Commander installation and OpenAI tunnel activation on Solaris
+remain pending native dependency tests and service backend implementation.
 Do not remove the existing native-Linux guard just to make an install appear to
 succeed. Preserve the Linux operation and tests while developing a Solaris
 backend in a separate branch.
@@ -44,3 +45,79 @@ backend in a separate branch.
    SSH connection. Only then assess optional background service management.
 
 Do not claim Solaris compatibility based only on Ansible YAML syntax checks.
+
+## Run Ansible locally on the Solaris VM
+
+Use the Solaris VM as both the Ansible controller and its managed host. The
+local connection executes modules directly under the selected interpreter.
+
+The supplied Oracle Solaris 11.4.81.193.1 x86 CBE inspection on 2026-11-18
+reported Python 3.13.1, Python 3.11.11, GCC 14.2, Git 2.48.1, GNU Make,
+and sudo access for the existing `mcp_operator` account. The default
+`/usr/bin/python3` selected Python 3.11.11. Ansible Core 2.21 requires
+controller Python 3.12 through 3.14, so select `/usr/bin/python3.13`
+explicitly.
+
+From a checkout of this branch, install the Python modules from the configured
+Solaris publisher. These packages provide the native cryptography and YAML
+extensions for Python 3.13.
+
+```sh
+sudo pkg install \
+    library/python/pip-313 \
+    library/python/cryptography-313 \
+    library/python/pyyaml-313 \
+    library/python/jinja2-313
+
+/usr/bin/python3.13 -m venv --system-site-packages .venv
+.venv/bin/python -m pip install -r requirements-controller.txt
+.venv/bin/ansible-galaxy collection install -r collections/requirements.yml
+.venv/bin/ansible --version
+```
+
+The virtual environment can read the Solaris Python packages. Its pip
+installation writes into the virtual environment. The minimal
+`requirements-controller.txt` contains the Ansible and inventory-parser
+requirements. The development requirements additionally install the lint
+tools used for repository checks.
+
+Configure the local inventory as the existing runtime user.
+
+```sh
+cp -i inventory/local.example.yml inventory/hosts.yml
+vi inventory/hosts.yml
+```
+
+Replace `REPLACE_WITH_EXISTING_ACCOUNT` with the existing runtime
+account, such as `mcp_operator`. The shared inventory selects
+`ansible_connection: local`, `{{ ansible_playbook_python }}`, and the standard
+`stdio` transport. The interpreter follows the Python environment running
+Ansible. Select the existing runtime account explicitly.
+For OpenAI Secure MCP Tunnel, set `dcmcp_transport: openai_tunnel`
+in the private inventory.
+
+Verify local Ansible execution and collect the native dependency information.
+
+```sh
+.venv/bin/python scripts/validate-inventory.py inventory/hosts.yml
+.venv/bin/ansible -i inventory/hosts.yml mcp_servers -m ansible.builtin.ping
+.venv/bin/ansible-playbook -i inventory/hosts.yml playbooks/solaris-probe.yml
+```
+
+The probe reads the release, architecture, account, executable locations,
+Node version, package publishers, and installable Node, Rust, ripgrep, and
+libvips packages. It uses the regular account and makes read-only queries.
+A successful probe establishes local controller execution. Native Desktop
+Commander installation and OpenAI tunnel activation still require the
+Solaris backends listed above and VM acceptance tests.
+
+The supplied CBE package query offered Node.js 20.18.2 and found no installable
+ripgrep or libvips package. The pinned Desktop Commander source requires
+Node.js 22.12 or newer. Its Node runtime, image library, and search runtime
+therefore need native dependency verification before the install role can
+support this CBE image.
+
+References for the controller bootstrap and dependency checks are the
+[Ansible Core support matrix](https://docs.ansible.com/projects/ansible/latest/reference_appendices/release_and_maintenance.html),
+[Ansible Python environment guidance](https://docs.ansible.com/projects/ansible/latest/reference_appendices/faq.html),
+and [Oracle's public Solaris package catalog](http://pkg.oracle.com/solaris/release/en/catalog.shtml).

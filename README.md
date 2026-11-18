@@ -28,7 +28,7 @@ rejects incompatible transport layouts instead of trying to convert them.
 | Optional remote access | Existing authenticated SSH, or explicitly configured OpenAI Secure MCP Tunnel |
 | AI clients | Any client that can launch a standards-compliant stdio MCP subprocess; examples for Gemini CLI, Claude Code and Codex |
 | Platforms | Native Ubuntu 26.04, RHEL 10, Fedora 43/44 and Arch/Omarchy; x86_64 or aarch64, glibc and systemd |
-| Solaris | **Not supported yet**; prerequisites and portability review documented |
+| Solaris | Local controller preparation and dependency probe available; native MCP installation pending. See [Solaris setup](docs/solaris-portability.md#run-ansible-locally-on-the-solaris-vm). |
 | Components pinned | Desktop Commander 0.3.1, Node 24.21.0; optional OpenAI tunnel-client 0.0.16 |
 | Ansible | Controller ansible-core 2.21.x, `community.general` 13.5.0 for pacman |
 

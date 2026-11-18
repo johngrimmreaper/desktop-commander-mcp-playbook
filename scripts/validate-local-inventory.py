@@ -30,7 +30,8 @@ def is_local_only_inventory(source):
         values = hosts["localhost"]
         return (isinstance(values, dict)
                 and values.get("ansible_connection") == "local"
-                and values.get("ansible_python_interpreter") == "/usr/bin/python3"
+                and values.get("ansible_python_interpreter") in
+                ("/usr/bin/python3", "{{ ansible_playbook_python }}")
                 and not any(key in values for key in
                             ("ansible_host", "ansible_user", "ansible_become_password"))
                 and isinstance(values.get("dcmcp_user"), str)
@@ -51,7 +52,7 @@ def main():
         content = ""
     if not is_local_only_inventory(content):
         print("Refusing detached upgrade: use one localhost with a local connection, "
-              "system Python and explicitly selected non-root dcmcp_user. "
+              "system or controller Python and explicitly selected non-root dcmcp_user. "
               "Use SSH/console for remote inventories.", file=sys.stderr)
         return 2
     if args.print_user:
