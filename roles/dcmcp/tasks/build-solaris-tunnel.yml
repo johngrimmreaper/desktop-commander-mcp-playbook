@@ -1,0 +1,74 @@
+---
+- name: Download the checksum-pinned native Go toolchain
+  ansible.builtin.get_url:
+    url: "https://go.dev/dl/go{{ dcmcp_solaris_go_version }}.solaris-amd64.tar.gz"
+    checksum: "sha256:{{ dcmcp_solaris_go_checksum }}"
+    dest: "{{ dcmcp_stage_path }}/go-toolchain.tar.gz"
+    mode: "0600"
+    timeout: 60
+
+- name: Unpack the toolchain inside the private staging directory
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - |
+        import sys
+        import tarfile
+
+        with tarfile.open(sys.argv[1], "r:gz") as archive:
+            archive.extractall(sys.argv[2], filter="data")
+      - "{{ dcmcp_stage_path }}/go-toolchain.tar.gz"
+      - "{{ dcmcp_stage_path }}"
+  changed_when: true
+
+- name: Check out the pinned tunnel client source
+  ansible.builtin.git:
+    repo: https://github.com/openai/tunnel-client.git
+    dest: "{{ dcmcp_stage_path }}/tunnel-source"
+    version: "v{{ dcmcp_tunnel_version }}"
+    depth: 1
+    update: false
+    force: false
+  environment:
+    GIT_TERMINAL_PROMPT: "0"
+  register: dcmcp_solaris_tunnel_source
+
+- name: Verify the tunnel source revision
+  ansible.builtin.assert:
+    that: dcmcp_solaris_tunnel_source.after == dcmcp_solaris_tunnel_revision
+
+- name: Build the tunnel client natively with its locked modules
+  ansible.builtin.command:
+    argv:
+      - "{{ dcmcp_stage_path }}/go/bin/go"
+      - build
+      - -p=2
+      - -mod=readonly
+      - -trimpath
+      - -buildvcs=false
+      - -ldflags
+      - >-
+        -X github.com/openai/tunnel-client/pkg/version.semanticVersion={{ dcmcp_tunnel_version }}
+        -X github.com/openai/tunnel-client/pkg/version.GitSHA={{ dcmcp_solaris_tunnel_revision }}
+      - -o
+      - "{{ dcmcp_stage_path }}/bin/tunnel-client"
+      - ./cmd/client
+    chdir: "{{ dcmcp_stage_path }}/tunnel-source"
+  environment:
+    CGO_ENABLED: "0"
+    GOOS: solaris
+    GOARCH: amd64
+    GOENV: "off"
+    GOTOOLCHAIN: local
+    GOWORK: "off"
+  changed_when: true
+
+- name: Keep the tunnel executable and remove its build inputs
+  ansible.builtin.file:
+    path: "{{ dcmcp_stage_path }}/{{ item }}"
+    state: absent
+  loop:
+    - go
+    - go-toolchain.tar.gz
+    - tunnel-source

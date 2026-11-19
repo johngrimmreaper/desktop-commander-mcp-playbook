@@ -1,0 +1,18 @@
+#!/usr/bin/sh
+# The client launches this stdio process as the account that owns the release.
+set -eu
+umask 077
+if [ "$(/usr/bin/id -u)" != {{ dcmcp_uid | string | quote }} ]; then
+    echo "Run the MCP launcher as the selected runtime account." >&2
+    exit 78
+fi
+if [ ! -f {{ dcmcp_desktop_config | quote }} ]; then
+    echo "Copy the Desktop Commander configuration example before running the launcher." >&2
+    exit 78
+fi
+
+export HOME={{ dcmcp_account_home | quote }}
+export PATH={{ (dcmcp_solaris_current + '/bin:' + dcmcp_solaris_exec_path) | quote }}
+export NODE_ENV=production
+cd {{ dcmcp_workdir | quote }}
+exec {{ dcmcp_solaris_runtime['node'] | quote }} {{ (dcmcp_solaris_current + '/mcp/dist/index.js') | quote }} --no-onboarding

@@ -1,0 +1,25 @@
+---
+# Native-build pins. The shared inventory remains platform and provider neutral.
+dcmcp_solaris_ripgrep_version: "14.1.1"
+dcmcp_solaris_tunnel_revision: 5f99daabd4aa4a77049e6d81d54a0d8c18335397
+dcmcp_solaris_go_version: "1.27.0"
+dcmcp_solaris_go_checksum: c72177608076b035735fae53e5f31835fbe1ba7a630369aff70804f8c11c31b6
+
+dcmcp_solaris_root: "{{ dcmcp_account_home }}/.local/share/desktop-commander-mcp"
+dcmcp_solaris_releases: "{{ dcmcp_solaris_root }}/releases"
+dcmcp_solaris_current: "{{ dcmcp_solaris_root }}/current"
+dcmcp_solaris_release_id: >-
+  dc-{{ dcmcp_desktop_version }}-{{ dcmcp_desktop_revision[:12] }}-node-{{ dcmcp_solaris_runtime['node_version'] }}-rg-{{ dcmcp_solaris_ripgrep_version }}-{{ dcmcp_transport }}{{ ('-' + dcmcp_tunnel_version) if dcmcp_transport == 'openai_tunnel' else '' }}
+dcmcp_solaris_release: "{{ dcmcp_solaris_releases }}/{{ dcmcp_solaris_release_id }}"
+dcmcp_solaris_manifest:
+  schema: 1
+  platform: solaris-amd64
+  desktop_revision: "{{ dcmcp_desktop_revision }}"
+  lock_blob: "{{ dcmcp_lock_blob }}"
+  node_version: "{{ dcmcp_solaris_runtime['node_version'] }}"
+  ripgrep_version: "{{ dcmcp_solaris_ripgrep_version }}"
+  transport: "{{ dcmcp_transport }}"
+  tunnel_revision: "{{ dcmcp_solaris_tunnel_revision if dcmcp_transport == 'openai_tunnel' else '' }}"
+  go_version: "{{ dcmcp_solaris_go_version if dcmcp_transport == 'openai_tunnel' else '' }}"
+dcmcp_solaris_exec_path: >-
+  {{ dcmcp_solaris_runtime['node'] | dirname }}:/usr/gnu/bin:/usr/local/bin:/usr/bin:/usr/sbin

@@ -1,0 +1,255 @@
+---
+- name: Require a local install for the existing runtime account
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname == 'localhost'
+      - ansible_connection == 'local'
+      - not ansible_check_mode
+      - dcmcp_user | default('', true) is match('^[a-z_][a-z0-9_-]*$')
+      - dcmcp_transport in ['stdio', 'openai_tunnel']
+      - dcmcp_desktop_version is match('^[0-9]+[.][0-9]+[.][0-9]+$')
+      - dcmcp_desktop_revision is match('^[0-9a-f]{40}$')
+      - dcmcp_lock_blob is match('^[0-9a-f]{40}$')
+      - dcmcp_transport != 'openai_tunnel' or dcmcp_tunnel_version == '0.0.16'
+    fail_msg: Use a local inventory with an existing non-root account and valid source pins.
+
+- name: Read the local account and native development tools
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - |
+        import json
+        import os
+        from pathlib import Path
+        import pwd
+        import shutil
+        import subprocess
+        import sys
+
+        host = os.uname()
+        account = pwd.getpwuid(os.geteuid())
+        if host.sysname != "SunOS" or not host.version.startswith("11.4."):
+            raise SystemExit("This install path requires Oracle Solaris 11.4.")
+        if account.pw_uid == 0 or account.pw_name != sys.argv[1]:
+            raise SystemExit("Run the playbook as the selected non-root account without become.")
+        home = Path(account.pw_dir)
+        if not home.is_dir() or home.is_symlink() or home.stat().st_uid != account.pw_uid:
+            raise SystemExit("The runtime account must own its real passwd home.")
+        if not all(part.isascii() and (part.isalnum() or part in "/._-") for part in str(home)):
+            raise SystemExit("The account home must use an absolute path without shell metacharacters.")
+        tools = {name: shutil.which(name) for name in ("node", "npm", "rustc", "cargo")}
+        if not tools["node"] or not tools["npm"]:
+            raise SystemExit("Install Node.js 22 from the Solaris publisher first.")
+        version = subprocess.check_output(
+            [tools["node"], "-p", "process.platform + ':' + process.arch + ':' + process.versions.node"],
+            text=True, timeout=15,
+        ).strip().split(":")
+        if version[:2] != ["sunos", "x64"]:
+            raise SystemExit("The selected Node.js binary must be native Solaris x86-64.")
+        print(json.dumps({
+            "home": str(home), "uid": account.pw_uid, "node": tools["node"], "npm": tools["npm"],
+            "cargo": tools["cargo"], "rustc": tools["rustc"], "node_version": version[2],
+        }))
+      - "{{ dcmcp_user }}"
+  register: dcmcp_solaris_probe
+  changed_when: false
+
+- name: Record the native runtime
+  ansible.builtin.set_fact:
+    dcmcp_solaris_runtime: "{{ dcmcp_solaris_probe.stdout | from_json }}"
+    dcmcp_account_home: "{{ (dcmcp_solaris_probe.stdout | from_json)['home'] }}"
+    dcmcp_uid: "{{ (dcmcp_solaris_probe.stdout | from_json)['uid'] }}"
+
+- name: Require a compatible Node runtime and account home
+  ansible.builtin.assert:
+    that:
+      - dcmcp_solaris_runtime['node_version'] is match('^[0-9]+[.][0-9]+[.][0-9]+$')
+      - dcmcp_solaris_runtime['node_version'] is version('22.12.0', '>=')
+      - dcmcp_account_home.startswith('/')
+      - dcmcp_account_home != '/'
+      - dcmcp_home == dcmcp_account_home
+      - dcmcp_workdir.startswith('/')
+    fail_msg: Use Node.js 22.12 or newer, the passwd home and an absolute working directory.
+
+- name: Load the native release paths and pins
+  ansible.builtin.include_vars: solaris.yml
+
+- name: Inspect the native installation directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop:
+    - "{{ dcmcp_solaris_root }}"
+    - "{{ dcmcp_solaris_releases }}"
+    - "{{ dcmcp_solaris_release }}"
+  register: dcmcp_solaris_directories
+
+- name: Reject links and foreign installation directories
+  ansible.builtin.assert:
+    that:
+      - >-
+        not item.stat.exists or
+        (item.stat.isdir and not item.stat.islnk and item.stat.uid == dcmcp_uid | int)
+    fail_msg: The native installation paths must be real directories owned by the selected account.
+  loop: "{{ dcmcp_solaris_directories.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Record whether this release already exists
+  ansible.builtin.set_fact:
+    dcmcp_solaris_release_exists: "{{ dcmcp_solaris_directories.results[2].stat.exists }}"
+
+- name: Require the native Rust toolchain for a new release
+  ansible.builtin.assert:
+    that:
+      - dcmcp_solaris_runtime['cargo'] is string
+      - dcmcp_solaris_runtime['rustc'] is string
+    fail_msg: Install developer/rust/cargo and developer/rust/rustc before building the native release.
+  when: not dcmcp_solaris_release_exists
+
+- name: Check the manifest of a reused native release
+  when: dcmcp_solaris_release_exists
+  block:
+    - name: Read the completed release manifest
+      ansible.builtin.slurp:
+        src: "{{ dcmcp_solaris_release }}/release.json"
+      register: dcmcp_solaris_saved_manifest
+
+    - name: Reject reusing a release with different pins
+      ansible.builtin.assert:
+        that:
+          - dcmcp_solaris_saved_manifest.content | b64decode | from_json == dcmcp_solaris_manifest
+        fail_msg: Use a new release identifier when build pins change.
+
+- name: Create account-owned native installation directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+    follow: false
+  loop:
+    - "{{ dcmcp_solaris_root }}"
+    - "{{ dcmcp_solaris_releases }}"
+    - "{{ dcmcp_solaris_root }}/examples"
+    - "{{ dcmcp_account_home }}/.claude-server-commander"
+
+- name: Stage and validate the native release
+  block:
+    - name: Create a private staging directory on the release filesystem
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ dcmcp_solaris_releases }}"
+        prefix: .building-
+      register: dcmcp_solaris_stage
+      when: not dcmcp_solaris_release_exists
+
+    - name: Select the staged or previously built release for validation
+      ansible.builtin.set_fact:
+        dcmcp_stage_path: "{{ dcmcp_solaris_stage.path | default(dcmcp_solaris_release) }}"
+
+    - name: Build native ripgrep with the published dependency lock
+      ansible.builtin.command:
+        argv:
+          - "{{ dcmcp_solaris_runtime['cargo'] }}"
+          - install
+          - --locked
+          - --jobs
+          - "2"
+          - --root
+          - "{{ dcmcp_stage_path }}"
+          - --version
+          - "{{ dcmcp_solaris_ripgrep_version }}"
+          - ripgrep
+      changed_when: true
+      when: not dcmcp_solaris_release_exists
+
+    - name: Build the pinned MCP source using the installed Node runtime
+      ansible.builtin.import_tasks: build-mcp.yml
+      vars:
+        dcmcp_build_ref: "v{{ dcmcp_desktop_version }}"
+        dcmcp_build_depth: 1
+        dcmcp_build_python: "{{ ansible_playbook_python }}"
+        dcmcp_build_node: "{{ dcmcp_solaris_runtime['node'] }}"
+        dcmcp_build_npm: "{{ dcmcp_solaris_runtime['npm'] }}"
+        dcmcp_build_path: "{{ dcmcp_stage_path }}/bin:{{ dcmcp_solaris_exec_path }}"
+        dcmcp_build_esbuild: "{{ dcmcp_stage_path }}/mcp/node_modules/@esbuild/sunos-x64/bin/esbuild"
+      when: not dcmcp_solaris_release_exists
+
+    - name: Build the optional tunnel client from its pinned source
+      ansible.builtin.include_tasks: build-solaris-tunnel.yml
+      when:
+        - not dcmcp_solaris_release_exists
+        - dcmcp_transport == 'openai_tunnel'
+
+    - name: Verify the optional native tunnel executable
+      ansible.builtin.command:
+        argv: ["{{ dcmcp_stage_path }}/bin/tunnel-client", --version]
+      register: dcmcp_solaris_tunnel_version
+      changed_when: false
+      failed_when: >-
+        dcmcp_solaris_tunnel_version.rc != 0 or
+        (dcmcp_tunnel_version + '+' + dcmcp_solaris_tunnel_revision)
+        not in dcmcp_solaris_tunnel_version.stdout
+      when: dcmcp_transport == 'openai_tunnel'
+
+    - name: Validate the native MCP, ripgrep and a local tool call
+      ansible.builtin.script:
+        cmd: "{{ (role_path + '/files/mcp-smoke.mjs') | quote }} {{ (dcmcp_stage_path + '/mcp') | quote }}"
+        executable: "{{ dcmcp_solaris_runtime['node'] }}"
+      environment:
+        PATH: "{{ dcmcp_stage_path }}/bin:{{ dcmcp_solaris_exec_path }}"
+      changed_when: false
+
+    - name: Record the completed native release
+      ansible.builtin.copy:
+        content: "{{ dcmcp_solaris_manifest | to_nice_json }}\n"
+        dest: "{{ dcmcp_stage_path }}/release.json"
+        mode: "0600"
+      when: not dcmcp_solaris_release_exists
+
+    - name: Publish the validated native release with a single rename
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -c
+          - import os, sys; os.rename(sys.argv[1], sys.argv[2])
+          - "{{ dcmcp_stage_path }}"
+          - "{{ dcmcp_solaris_release }}"
+      changed_when: true
+      when: not dcmcp_solaris_release_exists
+  always:
+    - name: Remove the temporary native staging directory
+      ansible.builtin.file:
+        path: "{{ dcmcp_solaris_stage.path }}"
+        state: absent
+      when: dcmcp_solaris_stage.path is defined
+
+- name: Install the local stdio launcher
+  ansible.builtin.template:
+    src: mcp-child-solaris.j2
+    dest: "{{ dcmcp_solaris_root }}/mcp-child"
+    mode: "0700"
+
+- name: Install the operator configuration examples
+  ansible.builtin.template:
+    src: "{{ item.source }}"
+    dest: "{{ dcmcp_solaris_root }}/examples/{{ item.name }}"
+    mode: "0600"
+  vars:
+    dcmcp_helpers: "{{ dcmcp_solaris_root }}"
+  loop:
+    - {source: desktop-commander.json.example.j2, name: desktop-commander.json.example}
+    - {source: tunnel.yaml.example.j2, name: tunnel.yaml.example}
+  when: dcmcp_transport == 'openai_tunnel' or item.source != 'tunnel.yaml.example.j2'
+
+- name: Select the validated local release
+  ansible.builtin.file:
+    src: "{{ dcmcp_solaris_release }}"
+    dest: "{{ dcmcp_solaris_current }}"
+    state: link
+    follow: false
+
+- name: Report the native launcher and selected release
+  ansible.builtin.debug:
+    msg: "Selected {{ dcmcp_solaris_release_id }}. Local launcher: {{ dcmcp_solaris_root }}/mcp-child"
