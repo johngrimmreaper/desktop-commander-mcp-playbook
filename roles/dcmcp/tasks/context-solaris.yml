@@ -1,0 +1,54 @@
+---
+- name: Require a local playbook run for the existing runtime account
+  ansible.builtin.assert:
+    that:
+      - inventory_hostname == 'localhost'
+      - ansible_connection == 'local'
+      - not ansible_check_mode
+      - dcmcp_user | default('', true) is match('^[a-z_][a-z0-9_-]*$')
+      - dcmcp_transport in ['stdio', 'openai_tunnel']
+    fail_msg: Use a local inventory with an existing non-root account and a supported transport.
+
+- name: Read the local Solaris account
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - |
+        import json
+        import os
+        from pathlib import Path
+        import pwd
+        import sys
+
+        host = os.uname()
+        account = pwd.getpwuid(os.geteuid())
+        if host.sysname != "SunOS" or not host.version.startswith("11.4."):
+            raise SystemExit("This playbook path requires Oracle Solaris 11.4.")
+        if account.pw_uid == 0 or account.pw_name != sys.argv[1]:
+            raise SystemExit("Run Ansible locally as the selected non-root account.")
+        home = Path(account.pw_dir)
+        if not home.is_absolute() or home == Path("/") or not home.is_dir():
+            raise SystemExit("The runtime account must use an existing absolute passwd home.")
+        if home.is_symlink() or home.stat().st_uid != account.pw_uid:
+            raise SystemExit("The runtime account must own its real passwd home.")
+        if not all(char.isascii() and (char.isalnum() or char in "/._-") for char in str(home)):
+            raise SystemExit("The account home must use a path without shell metacharacters.")
+        print(json.dumps({"home": str(home), "uid": account.pw_uid}))
+      - "{{ dcmcp_user }}"
+  register: dcmcp_solaris_account
+  changed_when: false
+
+- name: Record the existing home and UID
+  ansible.builtin.set_fact:
+    dcmcp_account_home: "{{ (dcmcp_solaris_account.stdout | from_json)['home'] }}"
+    dcmcp_uid: "{{ (dcmcp_solaris_account.stdout | from_json)['uid'] }}"
+
+- name: Require the passwd home and an absolute working directory
+  ansible.builtin.assert:
+    that:
+      - dcmcp_home == dcmcp_account_home
+      - dcmcp_workdir.startswith('/')
+
+- name: Load the native paths and release pins
+  ansible.builtin.include_vars: solaris.yml

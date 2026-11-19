@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<service_bundle type="manifest" name="{{ dcmcp_solaris_service_name | basename }}">
+  <service name="{{ dcmcp_solaris_service_name }}" type="service" version="1">
+    <create_default_instance enabled="false"/>
+
+    <dependency name="boot-dependencies" grouping="require_all" restart_on="none" type="service">
+      <service_fmri value="svc:/system/filesystem/local:default"/>
+      <service_fmri value="svc:/milestone/network:default"/>
+    </dependency>
+
+    <method_context working_directory="{{ dcmcp_workdir | e }}">
+      <method_credential user="{{ dcmcp_user }}"/>
+      <method_environment>
+        <envvar name="HOME" value="{{ dcmcp_account_home }}"/>
+        <envvar name="USER" value="{{ dcmcp_user }}"/>
+        <envvar name="LOGNAME" value="{{ dcmcp_user }}"/>
+        <envvar name="PATH" value="{{ dcmcp_solaris_current }}/bin:/usr/gnu/bin:/usr/local/bin:/usr/bin:/usr/sbin"/>
+      </method_environment>
+    </method_context>
+
+    <exec_method type="method" name="start" timeout_seconds="0"
+      exec="{{ dcmcp_solaris_current }}/bin/tunnel-client run --config {{ dcmcp_tunnel_config }}"/>
+    <exec_method type="method" name="stop" timeout_seconds="30" exec=":kill"/>
+
+    <property_group name="startd" type="framework">
+      <propval name="duration" type="astring" value="child"/>
+    </property_group>
+  </service>
+</service_bundle>

@@ -1,43 +1,26 @@
 ---
-- name: Require a local install for the existing runtime account
+- name: Load the native account and paths
+  ansible.builtin.import_tasks: context-solaris.yml
+
+- name: Require valid native source pins
   ansible.builtin.assert:
     that:
-      - inventory_hostname == 'localhost'
-      - ansible_connection == 'local'
-      - not ansible_check_mode
-      - dcmcp_user | default('', true) is match('^[a-z_][a-z0-9_-]*$')
-      - dcmcp_transport in ['stdio', 'openai_tunnel']
       - dcmcp_desktop_version is match('^[0-9]+[.][0-9]+[.][0-9]+$')
       - dcmcp_desktop_revision is match('^[0-9a-f]{40}$')
       - dcmcp_lock_blob is match('^[0-9a-f]{40}$')
       - dcmcp_transport != 'openai_tunnel' or dcmcp_tunnel_version == '0.0.16'
-    fail_msg: Use a local inventory with an existing non-root account and valid source pins.
+    fail_msg: Use valid source pins for the native release.
 
-- name: Read the local account and native development tools
+- name: Read the native development tools
   ansible.builtin.command:
     argv:
       - "{{ ansible_playbook_python }}"
       - -c
       - |
         import json
-        import os
-        from pathlib import Path
-        import pwd
         import shutil
         import subprocess
-        import sys
 
-        host = os.uname()
-        account = pwd.getpwuid(os.geteuid())
-        if host.sysname != "SunOS" or not host.version.startswith("11.4."):
-            raise SystemExit("This install path requires Oracle Solaris 11.4.")
-        if account.pw_uid == 0 or account.pw_name != sys.argv[1]:
-            raise SystemExit("Run the playbook as the selected non-root account without become.")
-        home = Path(account.pw_dir)
-        if not home.is_dir() or home.is_symlink() or home.stat().st_uid != account.pw_uid:
-            raise SystemExit("The runtime account must own its real passwd home.")
-        if not all(part.isascii() and (part.isalnum() or part in "/._-") for part in str(home)):
-            raise SystemExit("The account home must use an absolute path without shell metacharacters.")
         tools = {name: shutil.which(name) for name in ("node", "npm", "rustc", "cargo")}
         if not tools["node"] or not tools["npm"]:
             raise SystemExit("Install Node.js 22 from the Solaris publisher first.")
@@ -47,33 +30,20 @@
         ).strip().split(":")
         if version[:2] != ["sunos", "x64"]:
             raise SystemExit("The selected Node.js binary must be native Solaris x86-64.")
-        print(json.dumps({
-            "home": str(home), "uid": account.pw_uid, "node": tools["node"], "npm": tools["npm"],
-            "cargo": tools["cargo"], "rustc": tools["rustc"], "node_version": version[2],
-        }))
-      - "{{ dcmcp_user }}"
+        print(json.dumps({**tools, "node_version": version[2]}))
   register: dcmcp_solaris_probe
   changed_when: false
 
 - name: Record the native runtime
   ansible.builtin.set_fact:
     dcmcp_solaris_runtime: "{{ dcmcp_solaris_probe.stdout | from_json }}"
-    dcmcp_account_home: "{{ (dcmcp_solaris_probe.stdout | from_json)['home'] }}"
-    dcmcp_uid: "{{ (dcmcp_solaris_probe.stdout | from_json)['uid'] }}"
 
-- name: Require a compatible Node runtime and account home
+- name: Require a compatible Node runtime
   ansible.builtin.assert:
     that:
       - dcmcp_solaris_runtime['node_version'] is match('^[0-9]+[.][0-9]+[.][0-9]+$')
       - dcmcp_solaris_runtime['node_version'] is version('22.12.0', '>=')
-      - dcmcp_account_home.startswith('/')
-      - dcmcp_account_home != '/'
-      - dcmcp_home == dcmcp_account_home
-      - dcmcp_workdir.startswith('/')
-    fail_msg: Use Node.js 22.12 or newer, the passwd home and an absolute working directory.
-
-- name: Load the native release paths and pins
-  ansible.builtin.include_vars: solaris.yml
+    fail_msg: Use Node.js 22.12 or newer.
 
 - name: Inspect the native installation directories
   ansible.builtin.stat:

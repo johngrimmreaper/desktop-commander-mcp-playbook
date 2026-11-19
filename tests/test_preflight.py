@@ -453,6 +453,27 @@ class PreflightTests(unittest.TestCase):
                  for path in paths}
         self.assertEqual(before, after)
 
+    def install_solaris_fixture(self, transport="openai_tunnel"):
+        release = self.ctx.helpers / "releases" / "native-release"
+        (release / "bin").mkdir(parents=True)
+        self.write(release / "bin/tunnel-client", "#!/bin/sh\nexit 0\n", 0o700)
+        self.write(release / "release.json", json.dumps({
+            "schema": 1, "platform": "solaris-amd64", "transport": transport,
+        }), 0o600)
+        (self.ctx.helpers / "current").symlink_to(release)
+
+    def test_solaris_tunnel_preflight_checks_private_inputs(self):
+        self.install_solaris_fixture()
+        self.assertEqual(pf.validate_solaris_tunnel(self.ctx), 18787)
+        self.ctx.key.chmod(0o644)
+        with self.assertRaisesRegex(pf.InvalidConfig, "mode 0600"):
+            pf.validate_solaris_tunnel(self.ctx)
+
+    def test_solaris_tunnel_preflight_rejects_stdio_release(self):
+        self.install_solaris_fixture(transport="stdio")
+        with self.assertRaisesRegex(pf.InvalidConfig, "dcmcp_transport=openai_tunnel"):
+            pf.validate_solaris_tunnel(self.ctx)
+
 
 if __name__ == "__main__":
     unittest.main()

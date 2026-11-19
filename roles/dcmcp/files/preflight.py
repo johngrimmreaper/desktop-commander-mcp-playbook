@@ -385,7 +385,7 @@ def validate_runtime_context(ctx):
             "The working directory is missing or not accessible to the runtime user.")
 
 
-def validate(ctx, release=None, check_port=False, runner=probe):
+def validate_tunnel_inputs(ctx):
     validate_runtime_context(ctx)
     private_directory(ctx.config.parent, ctx.uid)
     private_directory(ctx.desktop_config.parent, ctx.uid)
@@ -395,6 +395,33 @@ def validate(ctx, release=None, check_port=False, runner=probe):
     port = validate_tunnel(parse_yaml(tunnel_bytes), ctx)
     validate_desktop(parse_json(desktop_bytes))
     validate_key(key_bytes)
+    return port, tunnel_bytes, key_bytes
+
+
+def validate_solaris_tunnel(ctx):
+    """Check the account-owned current release and the active tunnel inputs."""
+    port, _, _ = validate_tunnel_inputs(ctx)
+    current = ctx.helpers / "current"
+    require(current.is_symlink() and current.lstat().st_uid == ctx.uid,
+            "Install the native OpenAI tunnel release before activating the service.")
+    release = current.resolve(strict=True)
+    require(release.parent == ctx.helpers / "releases",
+            "The native selector must point to an installed local release.")
+    manifest = parse_json(read_file(release / "release.json", ctx.uid, private=True))
+    require(manifest.get("schema") == 1 and manifest.get("platform") == "solaris-amd64"
+            and manifest.get("transport") == "openai_tunnel",
+            "Activate the native release installed with dcmcp_transport=openai_tunnel.")
+    for path in (ctx.helpers / "mcp-child", release / "bin/tunnel-client"):
+        safe_parents(path)
+        info = path.lstat()
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == ctx.uid
+                and not info.st_mode & 0o022 and os.access(path, os.X_OK),
+                "The native tunnel executable and MCP launcher must be owned and executable.")
+    return port
+
+
+def validate(ctx, release=None, check_port=False, runner=probe):
+    port, tunnel_bytes, key_bytes = validate_tunnel_inputs(ctx)
     release, manifest_bytes = validate_release(ctx, release or ctx.current, runner)
     require(parse_json(manifest_bytes)["transport"] == "openai_tunnel",
             "OpenAI tunnel activation requires its explicit transport release.")
@@ -435,7 +462,7 @@ def validate_stdio(ctx, release, runner=probe):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", required=True,
-                        help="Explicit existing Linux runtime account (no default)")
+                        help="Explicit existing runtime account (no default)")
     parser.add_argument("--workdir")
     parser.add_argument("--home", help="Override passwd home only for isolated offline test fixtures")
     parser.add_argument("--account-home",
@@ -447,13 +474,21 @@ def main():
                         help="Validate immutable artifacts without requiring active configuration")
     parser.add_argument("--fingerprint", action="store_true")
     parser.add_argument("--check-port", action="store_true")
+    parser.add_argument("--solaris-tunnel", action="store_true",
+                        help="Validate the installed Solaris tunnel and print its health port")
     args = parser.parse_args()
     try:
         account = pwd.getpwnam(args.user)
-        ctx = Context(args.user, account.pw_uid, absolute_path(args.home or account.pw_dir),
+        home = absolute_path(args.home or account.pw_dir)
+        helpers = home / ".local/share/desktop-commander-mcp" if args.solaris_tunnel else None
+        ctx = Context(args.user, account.pw_uid, home,
                       absolute_path(args.workdir or account.pw_dir),
-                      absolute_path(args.account_home or account.pw_dir))
-        if args.release_only:
+                      absolute_path(args.account_home or account.pw_dir), helpers=helpers)
+        if args.solaris_tunnel:
+            require(not any((args.release, args.release_only, args.stdio, args.fingerprint, args.check_port)),
+                    "Solaris tunnel validation checks the current native release.")
+            result = validate_solaris_tunnel(ctx)
+        elif args.release_only:
             require(args.release and not args.fingerprint and not args.check_port
                     and not args.stdio,
                     "Release-only validation requires --release without activation options.")
@@ -474,7 +509,7 @@ def main():
         print("Preflight failed: required files, user or dependencies are unavailable/invalid.",
               file=sys.stderr)
         return 78
-    print(result if args.fingerprint or args.release_only or args.stdio
+    print(result if args.fingerprint or args.release_only or args.stdio or args.solaris_tunnel
           else "Preflight passed (offline; no daemon or MCP started).")
     return 0
 

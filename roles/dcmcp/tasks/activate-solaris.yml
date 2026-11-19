@@ -1,0 +1,141 @@
+---
+- name: Load the native account and paths
+  ansible.builtin.import_tasks: context-solaris.yml
+
+- name: Require the configured account's native tunnel
+  ansible.builtin.assert:
+    that:
+      - dcmcp_transport == 'openai_tunnel'
+      - dcmcp_tunnel_config == dcmcp_account_home + '/.config/desktop-commander-mcp/tunnel.yaml'
+    fail_msg: Select the native OpenAI tunnel release and prepare the account's tunnel.yaml and runtime.key.
+
+- name: Validate the current release and the private tunnel configuration
+  ansible.builtin.script:
+    cmd: >-
+      {{ (role_path + '/files/preflight.py') | quote }}
+      --solaris-tunnel --user {{ dcmcp_user | quote }} --workdir {{ dcmcp_workdir | quote }}
+    executable: "{{ ansible_playbook_python }}"
+  environment:
+    HOME: "{{ dcmcp_account_home }}"
+  register: dcmcp_solaris_preflight
+  changed_when: false
+
+- name: Read the SMF service state and persistent boot setting
+  ansible.builtin.command:
+    argv: [/usr/bin/svcprop, -c, -p, general/enabled, -p, restarter/state, "{{ dcmcp_solaris_service }}"]
+  register: dcmcp_solaris_previous
+  changed_when: false
+  failed_when: dcmcp_solaris_previous.rc not in [0, 1]
+
+- name: Remember the existing service state and configured health port
+  ansible.builtin.set_fact:
+    dcmcp_solaris_was_enabled: "{{ 'general/enabled boolean true' in dcmcp_solaris_previous.stdout }}"
+    dcmcp_solaris_was_running: >-
+      {{ 'restarter/state astring online' in dcmcp_solaris_previous.stdout or
+         'restarter/state astring degraded' in dcmcp_solaris_previous.stdout }}
+    dcmcp_solaris_health_port: "{{ dcmcp_solaris_preflight.stdout | trim | int }}"
+
+- name: Require a free health port before starting a new tunnel process
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ dcmcp_solaris_health_port }}"
+    state: stopped
+    timeout: 3
+    msg: The health listener is in use. Stop the foreground tunnel or any other service using this port.
+  when: not dcmcp_solaris_was_running
+
+- name: Ensure the site manifest directory exists
+  become: true
+  ansible.builtin.file:
+    path: "{{ dcmcp_solaris_service_manifest | dirname }}"
+    state: directory
+    owner: root
+    group: sys
+    mode: "0755"
+    follow: false
+
+- name: Install the validated per-account SMF manifest
+  become: true
+  ansible.builtin.template:
+    src: tunnel-smf.xml.j2
+    dest: "{{ dcmcp_solaris_service_manifest }}"
+    owner: root
+    group: sys
+    mode: "0644"
+    validate: /usr/sbin/svccfg validate %s
+  register: dcmcp_solaris_service_manifest_result
+
+- name: Import the new or updated manifest
+  become: true
+  ansible.builtin.command:
+    argv: [/usr/sbin/svcadm, restart, -s, -T, "60", "svc:/system/manifest-import:default"]
+  changed_when: true
+  when: dcmcp_solaris_service_manifest_result.changed or dcmcp_solaris_previous.rc == 1
+
+- name: Activate the SMF service and verify local readiness
+  block:
+    - name: Clear a retained SMF maintenance or degraded state
+      become: true
+      ansible.builtin.command:
+        argv: [/usr/sbin/svcadm, clear, "{{ dcmcp_solaris_service }}"]
+      changed_when: true
+      when: >-
+        'restarter/state astring maintenance' in dcmcp_solaris_previous.stdout or
+        'restarter/state astring degraded' in dcmcp_solaris_previous.stdout
+
+    - name: Enable persistent boot activation and bring the service online
+      become: true
+      ansible.builtin.command:
+        argv: [/usr/sbin/svcadm, enable, -s, -T, "60", "{{ dcmcp_solaris_service }}"]
+      changed_when: true
+      when: not dcmcp_solaris_was_enabled or not dcmcp_solaris_was_running
+
+    - name: Restart an existing service when requested or its manifest changed
+      become: true
+      ansible.builtin.command:
+        argv: [/usr/sbin/svcadm, restart, -s, -T, "60", "{{ dcmcp_solaris_service }}"]
+      changed_when: true
+      when:
+        - dcmcp_solaris_was_running
+        - dcmcp_restart | bool or dcmcp_solaris_service_manifest_result.changed
+
+    - name: Wait for the local tunnel health and readiness checks
+      ansible.builtin.command:
+        argv:
+          - "{{ dcmcp_solaris_current }}/bin/tunnel-client"
+          - health
+          - --url
+          - "http://127.0.0.1:{{ dcmcp_solaris_health_port }}"
+      register: dcmcp_solaris_health
+      until: dcmcp_solaris_health.rc == 0
+      retries: 15
+      delay: 2
+      changed_when: false
+
+    - name: Confirm SMF reports an online service enabled at boot
+      ansible.builtin.command:
+        argv: [/usr/bin/svcprop, -c, -p, general/enabled, -p, restarter/state, "{{ dcmcp_solaris_service }}"]
+      register: dcmcp_solaris_active
+      changed_when: false
+      failed_when: >-
+        dcmcp_solaris_active.rc != 0 or
+        'general/enabled boolean true' not in dcmcp_solaris_active.stdout or
+        'restarter/state astring online' not in dcmcp_solaris_active.stdout
+  rescue:
+    - name: Disable an inactive service if its first activation failed
+      become: true
+      ansible.builtin.command:
+        argv: [/usr/sbin/svcadm, disable, -s, -T, "60", "{{ dcmcp_solaris_service }}"]
+      changed_when: true
+      when: not dcmcp_solaris_was_enabled and not dcmcp_solaris_was_running
+
+    - name: Report the unsuccessful activation
+      ansible.builtin.fail:
+        msg: >-
+          SMF tunnel activation did not pass.
+          Check svcs -xv {{ dcmcp_solaris_service }} and the log path from
+          svcs -L {{ dcmcp_solaris_service }}.
+
+- name: Report the online tunnel with boot activation enabled
+  ansible.builtin.debug:
+    msg: "{{ dcmcp_solaris_service }} is online and enabled at boot."

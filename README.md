@@ -28,7 +28,7 @@ rejects incompatible transport layouts instead of trying to convert them.
 | Optional remote access | Existing authenticated SSH, or explicitly configured OpenAI Secure MCP Tunnel |
 | AI clients | Any client that can launch a standards-compliant stdio MCP subprocess; examples for Gemini CLI, Claude Code and Codex |
 | Platforms | Native Ubuntu 26.04, RHEL 10, Fedora 43/44 and Arch/Omarchy; x86_64 or aarch64, glibc and systemd |
-| Solaris | Local Ansible installation and stdio validated on Oracle Solaris 11.4.90 CBE x86-64. See [Solaris setup](docs/solaris-portability.md#run-ansible-locally-on-the-solaris-vm). |
+| Solaris | Local Ansible installation and stdio validated on Oracle Solaris 11.4.90 CBE x86-64. Optional SMF boot activation is described in [Solaris setup](docs/solaris-portability.md#run-your-own-openai-tunnel). |
 | Components pinned | Desktop Commander 0.3.4, Node 24.21.0 on Linux and system Node on Solaris; optional OpenAI tunnel-client 0.0.16 |
 | Ansible | Controller ansible-core 2.21.x, `community.general` 13.5.0 for pacman |
 
@@ -195,11 +195,9 @@ runtime credentials and configuration before making those manual changes.
 
 ## Future platforms and public-release readiness
 
-The generic MCP protocol is not tied to one AI company. The present **Ansible
-implementation is still Linux-specific**, and some native Node dependencies
-are platform-specific. In particular, Solaris needs native package, Node,
-`sharp`/`esbuild`, paths and service-lifecycle verification before support can
-be claimed. See the [Solaris audit](docs/solaris-portability.md).
+The generic MCP protocol is vendor-neutral. Native packages, Node dependencies
+and service management vary by platform. The Solaris setup documents the
+native build and SMF activation steps. [Solaris setup](docs/solaris-portability.md)
 
 Additional distribution backends and optional provider-specific relays should
 reuse the same MCP build, security, non-root execution and stdio contract,

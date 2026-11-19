@@ -8,6 +8,9 @@ dcmcp_solaris_go_checksum: c72177608076b035735fae53e5f31835fbe1ba7a630369aff7080
 dcmcp_solaris_root: "{{ dcmcp_account_home }}/.local/share/desktop-commander-mcp"
 dcmcp_solaris_releases: "{{ dcmcp_solaris_root }}/releases"
 dcmcp_solaris_current: "{{ dcmcp_solaris_root }}/current"
+dcmcp_solaris_service_name: "site/desktop-commander-mcp-{{ dcmcp_user }}"
+dcmcp_solaris_service: "svc:/{{ dcmcp_solaris_service_name }}:default"
+dcmcp_solaris_service_manifest: "/lib/svc/manifest/{{ dcmcp_solaris_service_name }}.xml"
 dcmcp_solaris_release_id: >-
   dc-{{ dcmcp_desktop_version }}-{{ dcmcp_desktop_revision[:12] }}-node-{{ dcmcp_solaris_runtime['node_version'] }}-rg-{{ dcmcp_solaris_ripgrep_version }}-{{ dcmcp_transport }}{{ ('-' + dcmcp_tunnel_version) if dcmcp_transport == 'openai_tunnel' else '' }}
 dcmcp_solaris_release: "{{ dcmcp_solaris_releases }}/{{ dcmcp_solaris_release_id }}"

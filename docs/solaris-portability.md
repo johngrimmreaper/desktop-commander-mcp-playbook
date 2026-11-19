@@ -10,9 +10,9 @@ A local run of `playbooks/install.yml` on 2026-11-19 with
 `dcmcp_transport=openai_tunnel` completed on that VM with
 `ok=38 changed=16 failed=0`. Ansible built the native tunnel client v0.0.16
 with Go 1.27.0, ran its version check, and passed the local MCP smoke test
-before selecting the release. A repeat install and a live tunnel connection
-remain to be verified. The optional Solaris tunnel runs in the foreground.
-The systemd activation and service management playbooks apply to Linux.
+before selecting the release. The foreground tunnel connected and served
+MCP requests through that VM. The SMF boot service is configured separately
+through `playbooks/activate.yml`.
 
 ## Run Ansible locally on the Solaris VM
 
@@ -112,17 +112,34 @@ tunnel_dir="$HOME/.config/desktop-commander-mcp"
 vi "$tunnel_dir/tunnel.yaml"
 ```
 
-After installing the runtime key and the Desktop Commander configuration above,
-start one client as the selected user. The process runs in the foreground and
-opens the health listener on loopback.
+After placing the runtime key and both active configuration files, run
+`activate.yml` locally as the same account used for installation. The playbook
+checks the installed release and configuration offline. It uses sudo for the
+SMF manifest and service commands. The manifest runs the tunnel as the selected
+account and starts it on future boots. The client reads the key from its
+existing file reference.
+
+Stop any foreground client for the same tunnel before activating the service.
+Run the playbook in a local shell or an independent SSH session.
 
 ```sh
-"$dcmcp_dir/current/bin/tunnel-client" run --config "$tunnel_dir/tunnel.yaml"
+.venv/bin/ansible-playbook -i inventory/hosts.yml playbooks/activate.yml \
+    -e dcmcp_transport=openai_tunnel
 ```
 
-Stop the foreground process before changing transport or selecting another
-release. The user's active configuration and key live outside the release
-directory.
+The playbook checks the configured loopback health and readiness endpoints.
+To check status and find the SMF log, run the following commands.
+
+```sh
+svc="svc:/site/desktop-commander-mcp-$(id -un):default"
+svcs -l "$svc"
+svcs -L "$svc"
+```
+
+Run activation again with `-e dcmcp_restart=true` after changing the tunnel
+configuration, rotating the runtime key or selecting a new release. To stop
+the service and disable boot activation, run `sudo svcadm disable -s "$svc"`.
+The active configuration and key live outside the release directory.
 
 References: [Ansible Core support matrix](https://docs.ansible.com/projects/ansible/latest/reference_appendices/release_and_maintenance.html),
 [Oracle public Solaris repository](http://pkg.oracle.com/solaris/release/en/catalog.shtml),
