@@ -3,20 +3,13 @@ all:
   children:
     mcp_servers:
       hosts:
-        linux_mcp:
+        mcp_host:
           ansible_host: REPLACE_WITH_SERVER_ADDRESS
-          # SSH account (may differ from the MCP runtime account).
+          # The connection account can differ from the runtime account.
           ansible_user: REPLACE_WITH_SSH_USER
-          dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT
-          dcmcp_transport: stdio  # Provider-independent MCP; no tunnel or API key.
-          # Set dcmcp_transport: openai_tunnel for the optional OpenAI relay.
-          # REQUIRED: replace this placeholder with the existing MCP runtime user.
-          # Spaces only; dcmcp_user is separate from the SSH login above.
-          # Native Ubuntu 26.04, RHEL 10, Fedora 43/44 or Arch/Omarchy; no containers.
-          # Existing sudo only; pass --ask-become-pass if the host requires it.
-          # ansible_become_password belongs in Ansible Vault, never here.
-          # dcmcp_workdir: /home/REPLACE_WITH_EXISTING_LINUX_ACCOUNT/Projects
-          # For separate Linux runtime accounts on the same VM, use inventory
-          # aliases with the same ansible_host and distinct dcmcp_user values.
-          # If openai_tunnel is selected, each instance needs a distinct
-          # tunnel ID, runtime credentials, and health port.
+          dcmcp_user: REPLACE_WITH_EXISTING_ACCOUNT
+          dcmcp_transport: stdio
+          # Replace the placeholders with the host and existing account values.
+          # Use spaces for indentation.
+          # dcmcp_workdir: /absolute/path/to/workdir
+          # Configure optional transport adapters in the private inventory.

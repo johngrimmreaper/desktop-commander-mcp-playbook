@@ -25,7 +25,10 @@ def valid_inventory(source):
                     r"[a-z_][a-z0-9_-]*", user):
                 return False
             if host.get("ansible_connection") == "local":
-                if name != "localhost" or host.get("ansible_python_interpreter") != "/usr/bin/python3":
+                interpreter = host.get("ansible_python_interpreter")
+                if (name != "localhost" or not isinstance(interpreter, str)
+                        or (interpreter != "{{ ansible_playbook_python }}"
+                            and not re.fullmatch(r"/usr/bin/python3(?:\.[0-9]+)?", interpreter))):
                     return False
             elif (not isinstance(host.get("ansible_host"), str)
                   or not host.get("ansible_host", "").strip()

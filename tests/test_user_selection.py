@@ -23,7 +23,7 @@ class ExplicitRuntimeUserTests(unittest.TestCase):
                 example = (ROOT / "inventory" / filename).read_text()
                 self.assertNotIn("\t", example, "YAML examples must use spaces, not tabs")
                 lines = example.splitlines()
-                account_line = "          dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT"
+                account_line = "          dcmcp_user: REPLACE_WITH_EXISTING_ACCOUNT"
                 self.assertEqual(lines.count(account_line), 1)
                 index = lines.index(account_line)
                 self.assertTrue(lines[index - 1].startswith(f"          {preceding_key}: "))
@@ -31,7 +31,7 @@ class ExplicitRuntimeUserTests(unittest.TestCase):
                 hosts = inventory["all"]["children"]["mcp_servers"]["hosts"]
                 self.assertEqual(len(hosts), 1)
                 user = next(iter(hosts.values()))["dcmcp_user"]
-                self.assertEqual(user, "REPLACE_WITH_EXISTING_LINUX_ACCOUNT")
+                self.assertEqual(user, "REPLACE_WITH_EXISTING_ACCOUNT")
                 # This is a configuration prompt, never an implicit runtime identity.
                 self.assertIsNone(re.fullmatch(r"[a-z_][a-z0-9_-]*", user))
 

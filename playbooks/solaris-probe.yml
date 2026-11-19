@@ -1,0 +1,98 @@
+---
+- name: Inspect a local Solaris development target
+  hosts: mcp_servers
+  become: false
+  gather_facts: true
+  serial: 1
+  tasks:
+    - name: Require local execution on Solaris with an explicit runtime account
+      ansible.builtin.assert:
+        that:
+          - ansible_connection == 'local'
+          - ansible_facts['system'] == 'SunOS'
+          - dcmcp_user | default('', true) is match('^[a-z_][a-z0-9_-]*$')
+          - dcmcp_user != 'root'
+        fail_msg: Use a local inventory and select an existing non-root runtime account.
+
+    - name: Read the Solaris release
+      ansible.builtin.command:
+        argv: [/usr/bin/cat, /etc/release]
+      register: dcmcp_solaris_release
+      changed_when: false
+
+    - name: Read the kernel instruction set
+      ansible.builtin.command:
+        argv: [/usr/bin/isainfo, -k]
+      register: dcmcp_solaris_arch
+      changed_when: false
+
+    - name: Inspect the account and native development tools
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_python_interpreter }}"
+          - -c
+          - |
+            import json
+            import pwd
+            import shutil
+            import subprocess
+            import sys
+
+            account = pwd.getpwnam(sys.argv[1])
+            names = ("git", "gcc", "g++", "gmake", "pkg", "svcs", "node",
+                     "npm", "rustc", "cargo", "rg", "curl")
+            tools = {name: shutil.which(name) for name in names}
+            node = None
+            if tools["node"]:
+                result = subprocess.run(
+                    [tools["node"], "--version"], capture_output=True,
+                    text=True, timeout=15, check=False,
+                )
+                node = {"status": result.returncode, "version": result.stdout.strip()}
+            print(json.dumps({
+                "runtime_user": account.pw_name,
+                "runtime_uid": account.pw_uid,
+                "runtime_home": account.pw_dir,
+                "python": sys.executable,
+                "python_version": sys.version.split()[0],
+                "tools": tools,
+                "node": node,
+            }))
+          - "{{ dcmcp_user }}"
+      environment:
+        PATH: /usr/gnu/bin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin
+      register: dcmcp_solaris_tools
+      changed_when: false
+
+    - name: Inspect configured package publishers
+      ansible.builtin.command:
+        argv: [/usr/bin/pkg, publisher]
+      register: dcmcp_solaris_publishers
+      changed_when: false
+
+    - name: Query installable runtime and build packages
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/pkg
+          - list
+          - -a
+          - "*nodejs*"
+          - developer/rust/*
+          - "*ripgrep*"
+          - "*vips*"
+      register: dcmcp_solaris_packages
+      changed_when: false
+      # pkg list returns 3 when only some patterns match available packages.
+      # Missing optional packages remain visible in the final diagnostics.
+      failed_when: dcmcp_solaris_packages.rc not in [0, 1, 3]
+
+    - name: Show the local Solaris inspection results
+      ansible.builtin.debug:
+        msg:
+          release: "{{ dcmcp_solaris_release.stdout_lines }}"
+          architecture: "{{ dcmcp_solaris_arch.stdout }}"
+          controller_python: "{{ ansible_playbook_python }}"
+          native_tools: "{{ dcmcp_solaris_tools.stdout | from_json }}"
+          publishers: "{{ dcmcp_solaris_publishers.stdout_lines }}"
+          installable_packages: "{{ dcmcp_solaris_packages.stdout_lines }}"
+          package_diagnostics: "{{ dcmcp_solaris_packages.stderr_lines }}"

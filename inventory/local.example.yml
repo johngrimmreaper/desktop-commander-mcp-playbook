@@ -1,19 +1,14 @@
 ---
-# Run Ansible directly on the Ubuntu 26.04, RHEL 10 or Fedora 43/44 development/server VM.
-# Copy manually to inventory/hosts.yml; no SSH or Docker is used.
+# Run Ansible on the machine being configured.
+# Copy to inventory/hosts.yml and select an existing runtime account.
 all:
   children:
     mcp_servers:
       hosts:
         localhost:
           ansible_connection: local
-          ansible_python_interpreter: /usr/bin/python3
-          dcmcp_user: REPLACE_WITH_EXISTING_LINUX_ACCOUNT
-          dcmcp_transport: stdio  # Provider-independent MCP; no tunnel or API key.
-          # Set dcmcp_transport: openai_tunnel for the optional OpenAI relay.
-          # REQUIRED: replace the placeholder with an existing non-root Linux user.
-          # Spaces only; align dcmcp_user with the two settings above.
-          # Default working directory: the existing account's passwd home.
-          # Desktop Commander uses this account's passwd home for all transports.
-          # To install for another user, run a separate serial invocation or
-          # use inventory aliases referring to the same physical host.
+          ansible_python_interpreter: "{{ ansible_playbook_python }}"
+          dcmcp_user: REPLACE_WITH_EXISTING_ACCOUNT
+          dcmcp_transport: stdio
+          # Replace the placeholder with an existing non-root account.
+          # Default working directory is the account's existing home.

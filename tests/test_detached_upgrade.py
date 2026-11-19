@@ -27,6 +27,9 @@ class DetachedUpgradeTests(unittest.TestCase):
           dcmcp_user: mcp_operator
 '''
         self.assertTrue(module.is_local_only_inventory(good))
+        example = (ROOT / 'inventory/local.example.yml').read_text().replace(
+            'REPLACE_WITH_EXISTING_ACCOUNT', 'mcp_operator')
+        self.assertTrue(module.is_local_only_inventory(example))
         for invalid in (good.replace('local\n', 'ssh\n'),
                         good.replace('localhost:', 'remote:'),
                         good.replace('mcp_operator', 'root'),
