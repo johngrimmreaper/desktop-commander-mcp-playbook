@@ -6,11 +6,13 @@ SunOS esbuild 0.27.2 binary, and Sharp's WebAssembly build. Ripgrep 14.1.1
 built natively. An MCP client initialized, listed 25 tools and found a
 fixture file with `list_directory`.
 
-The development installer automates those steps and checks the MCP server
-before selecting the release. Native acceptance of the Ansible install and
-a live tunnel connection are separate checks. The optional tunnel runs in
-the foreground on Solaris. The systemd activation and service management
-playbooks apply to Linux.
+A local run of `playbooks/install.yml` on 2026-11-19 with
+`dcmcp_transport=openai_tunnel` completed on that VM with
+`ok=38 changed=16 failed=0`. Ansible built the native tunnel client v0.0.16
+with Go 1.27.0, ran its version check, and passed the local MCP smoke test
+before selecting the release. A repeat install and a live tunnel connection
+remain to be verified. The optional Solaris tunnel runs in the foreground.
+The systemd activation and service management playbooks apply to Linux.
 
 ## Run Ansible locally on the Solaris VM
 

@@ -7,6 +7,9 @@ OpenAI client that cannot execute a local/SSH MCP subprocess.
 The relay is not a generic AI transport. Other model providers can use a
 standard stdio MCP connection or a separately developed, tested adapter.
 
+For Oracle Solaris, follow the [local installation guide](solaris-portability.md#run-your-own-openai-tunnel)
+for the account-owned layout and foreground tunnel command.
+
 ## Supported layout
 
 Set the following explicitly in the ignored host inventory:
